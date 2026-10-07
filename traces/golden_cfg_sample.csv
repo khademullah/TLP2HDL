@@ -1,0 +1,17 @@
+timestamp,direction,type,requester,completer,tag,length,addr,payload
+0,RX,CfgRd,gpex-root,00:00.0,0,4,0x0,36 1b 08 00
+120,RX,CfgRd,gpex-root,00:00.0,0,4,0x8,00 00 00 06
+240,RX,CfgRd,gpex-root,00:00.0,0,4,0xc,00 00 00 00
+360,RX,CfgRd,gpex-root,00:00.0,0,4,0x10,00 00 00 00
+480,RX,CfgRd,pcie-root-port,00:01.0,0,4,0x0,36 1b 0c 00
+600,RX,CfgRd,pcie-root-port,00:01.0,0,4,0x8,00 00 04 06
+720,RX,CfgRd,pcie-root-port,00:01.0,0,4,0xc,00 00 81 00
+840,RX,CfgRd,pcie-root-port,00:01.0,0,4,0x8,00 00 04 06
+960,RX,CfgRd,pcie-root-port,00:01.0,0,4,0x18,00 00 00 00
+1080,RX,CfgRd,pcie-root-port,00:01.0,0,4,0x10,00 00 00 00
+1200,RX,CfgRd,x3130-upstream,01:00.0,0,4,0x0,4c 10 32 82
+1320,RX,CfgRd,x3130-upstream,01:00.0,0,4,0x8,02 00 04 06
+1440,RX,CfgRd,x3130-upstream,01:00.0,0,4,0xc,00 00 01 00
+1560,RX,CfgRd,x3130-upstream,01:00.0,0,4,0x8,02 00 04 06
+1680,RX,CfgRd,x3130-upstream,01:00.0,0,4,0x18,00 00 00 00
+1800,RX,CfgRd,x3130-upstream,01:00.0,0,4,0x10,00 00 00 00

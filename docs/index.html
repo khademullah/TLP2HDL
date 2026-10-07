@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TLP2HDL — PCIe TLPs to HDL simulation</title>
+  <meta name="description" content="Replay pcieshark and QEMU PCIe TLP traces into Verilator. Teaching AXI-Stream beats, Match scoreboard, GTKWave VCD. Pcap2HDL for PCIe.">
+  <meta property="og:title" content="TLP2HDL">
+  <meta property="og:description" content="PCIe TLPs to cycle-accurate HDL — replay, wave, gate Match.">
+  <meta property="og:image" content="assets/logo-web.png">
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --navy: #182028;
+      --navy-deep: #10151b;
+      --cyan: #00b0d0;
+      --gold: #e0b018;
+      --ink: #e8edf2;
+      --muted: #8b97a3;
+      --line: #2c343c;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--navy-deep);
+      color: var(--ink);
+      font-family: "IBM Plex Sans", system-ui, sans-serif;
+      line-height: 1.55;
+    }
+    a { color: var(--cyan); text-decoration: none; }
+    a:hover { color: #4dcee0; }
+    code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.92em; }
+    .wrap { width: min(1080px, calc(100% - 40px)); margin: 0 auto; }
+
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 0;
+      border-bottom: 1px solid var(--line);
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--ink);
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .brand img { width: 36px; height: 36px; border-radius: 50%; display: block; }
+    .nav-links { display: flex; flex-wrap: wrap; gap: 18px; font-size: 14px; }
+    .nav-links a { color: var(--muted); }
+    .nav-links a:hover { color: var(--ink); }
+
+    .hero {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 48px;
+      align-items: center;
+      padding: 64px 0 48px;
+    }
+    .hero-mark {
+      width: 168px;
+      height: 168px;
+      border-radius: 50%;
+      box-shadow: 0 0 0 1px var(--line);
+      display: block;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 42px;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+    }
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--gold);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .tag {
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 18px;
+      max-width: 38em;
+    }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      padding: 9px 16px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .btn-cyan {
+      background: var(--cyan);
+      border-color: var(--cyan);
+      color: var(--navy-deep);
+    }
+    .btn-cyan:hover { background: #33c0d8; color: var(--navy-deep); }
+    .btn-gold {
+      background: transparent;
+      border-color: var(--gold);
+      color: var(--gold);
+    }
+    .btn-gold:hover { background: rgba(224, 176, 24, 0.12); color: var(--gold); }
+    .btn-ghost {
+      background: transparent;
+      border-color: var(--line);
+      color: var(--ink);
+    }
+    .btn-ghost:hover { border-color: var(--cyan); color: var(--cyan); }
+
+    .trace {
+      height: 10px;
+      margin: 8px 0 48px;
+      background:
+        linear-gradient(90deg, transparent 0 4%, var(--gold) 4% 18%, transparent 18% 22%,
+          var(--gold) 22% 70%, transparent 70% 74%, var(--gold) 74% 96%, transparent 96%);
+      opacity: 0.55;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 22px;
+      font-weight: 600;
+    }
+    h3 {
+      margin: 0 0 6px;
+      font-size: 15px;
+      color: var(--cyan);
+      font-weight: 500;
+    }
+    section { padding: 8px 0 48px; }
+    .lead { color: var(--muted); margin: 0 0 22px; max-width: 46em; }
+
+    .position {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 8px;
+    }
+    .position article {
+      background: var(--navy);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px 18px 16px;
+    }
+    .position p { margin: 0; color: var(--muted); font-size: 14px; }
+    .position .eq { color: var(--gold); font-family: "IBM Plex Mono", monospace; font-size: 12px; margin-bottom: 8px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    .grid article {
+      background: var(--navy);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px 16px 14px;
+    }
+    .grid p { margin: 0; color: var(--muted); font-size: 14px; }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 10px;
+      counter-reset: step;
+    }
+    .pipeline li {
+      list-style: none;
+      background: var(--navy);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px 12px;
+      color: var(--muted);
+      font-size: 13px;
+      min-height: 108px;
+    }
+    .pipeline ol { margin: 0; padding: 0; display: contents; }
+    .pipeline li::before {
+      counter-increment: step;
+      content: counter(step, decimal-leading-zero);
+      display: block;
+      color: var(--gold);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+    .pipeline strong { display: block; color: var(--ink); font-size: 14px; margin-bottom: 4px; font-weight: 500; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      background: var(--navy);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th, td {
+      text-align: left;
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      background: #141a20;
+    }
+    tr:last-child td { border-bottom: none; }
+    td.mono { color: var(--cyan); }
+
+    pre {
+      margin: 0;
+      padding: 16px 18px;
+      background: var(--navy);
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--gold);
+      border-radius: 8px;
+      overflow-x: auto;
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 13px;
+      color: #d5dde4;
+    }
+    .pre-label {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      counter-reset: tip;
+      margin: 0;
+      padding: 0;
+    }
+    .steps li {
+      list-style: none;
+      background: var(--navy);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .steps li::before {
+      counter-increment: tip;
+      content: counter(tip, decimal-leading-zero);
+      display: block;
+      color: var(--gold);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .gate {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      background: var(--navy);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-top: 16px;
+    }
+    .gate-badge {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--navy-deep);
+      background: var(--gold);
+      padding: 6px 12px;
+      border-radius: 4px;
+    }
+    .gate p { margin: 0; color: var(--muted); font-size: 14px; flex: 1; min-width: 200px; }
+
+    .related {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    .related a {
+      display: block;
+      background: var(--navy);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      color: inherit;
+    }
+    .related a:hover { border-color: var(--cyan); }
+    .related h3 { margin-bottom: 8px; }
+    .related p { margin: 0; color: var(--muted); font-size: 14px; }
+
+    footer {
+      border-top: 1px solid var(--line);
+      padding: 22px 0 40px;
+      color: var(--muted);
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 900px) {
+      .hero { grid-template-columns: 1fr; gap: 24px; padding-top: 40px; }
+      .hero-mark { width: 120px; height: 120px; }
+      .grid, .position, .related { grid-template-columns: 1fr; }
+      .pipeline, .steps { grid-template-columns: 1fr 1fr; }
+      h1 { font-size: 32px; }
+    }
+    @media (max-width: 560px) {
+      .pipeline, .steps { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <nav>
+      <a class="brand" href="index.html">
+        <img src="assets/logo-web.png" alt="">
+        TLP2HDL
+      </a>
+      <div class="nav-links">
+        <a href="#path">Path</a>
+        <a href="#beats">Beats</a>
+        <a href="#start">Start</a>
+        <a href="#wave">Wave</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="run.html">Run book</a>
+        <a href="https://github.com/khademullah/TLP2HDL">GitHub</a>
+      </div>
+    </nav>
+
+    <header class="hero">
+      <img class="hero-mark" src="assets/logo.png" alt="TLP2HDL logo">
+      <div>
+        <p class="eyebrow">Release 0.1.0 · AGPL-3.0-only · Verilator 5.032+</p>
+        <h1>TLP2HDL</h1>
+        <p class="tag">PCIe Transaction Layer Packets to cycle-accurate HDL. Replay pcieshark and QEMU traces into Verilator, watch teaching AXIS beats on a wave, and gate Match in C and SystemVerilog.</p>
+        <div class="actions">
+          <a class="btn btn-cyan" href="https://github.com/khademullah/TLP2HDL">View on GitHub</a>
+          <a class="btn btn-gold" href="run.html">Run book</a>
+          <a class="btn btn-ghost" href="architecture.html">Architecture</a>
+        </div>
+      </div>
+    </header>
+    <div class="trace" aria-hidden="true"></div>
+
+    <section>
+      <h2>Positioning</h2>
+      <p class="lead">Two tools, one stack. Capture and review in software; prove the same TLPs in simulation.</p>
+      <div class="position">
+        <article>
+          <div class="eq">pcieshark =</div>
+          <h3>Wireshark for PCIe TLPs</h3>
+          <p>Open QEMU <code>pci_cfg_*</code> logs and CSV captures. Match requests to completions. Live analyzer on a golden fabric.</p>
+        </article>
+        <article>
+          <div class="eq">TLP2HDL =</div>
+          <h3>Pcap2HDL for those TLPs</h3>
+          <p>Same traces enter DPI-C, become AXIS beats, drive a header parser and Match tracker, and must score <code>mis=0</code>.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="features">
+      <h2>What it does</h2>
+      <p class="lead">Built for early PCIe bring-up when you already have traces from QEMU or pcieshark and need an HDL view before a live analyzer or VIP stack.</p>
+      <div class="grid">
+        <article>
+          <h3>Trace ingest</h3>
+          <p>QEMU <code>pci_cfg_read/write</code> logs and pcieshark CSV. One file, no rebuild when you change <code>TRACE=</code>.</p>
+        </article>
+        <article>
+          <h3>Teaching AXIS-TLP</h3>
+          <p>Four 32-bit beats per TLP: type, IDs, address, payload. <code>tstart</code>…<code>tlast</code> like an L2 frame on AXI-Stream.</p>
+        </article>
+        <article>
+          <h3>Header parse</h3>
+          <p><code>tlp_header_parser</code> recovers CfgRd/CfgWr/Cpl fields and the QEMU one-line complete hint.</p>
+        </article>
+        <article>
+          <h3>Match tracker</h3>
+          <p>Same idea as pcieshark Match: one-line cfg → <code>complete</code>; optional MemRd↔Cpl pairing slots.</p>
+        </article>
+        <article>
+          <h3>C vs HDL gate</h3>
+          <p>DPI tallies and SystemVerilog counters must agree. <code>make gate</code> fails unless <code>mis=0</code>.</p>
+        </article>
+        <article>
+          <h3>Waveform VCD</h3>
+          <p>GTKWave dump with L2AxisBr-style reading: one clock, both pins high, frame span.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="path">
+      <h2>Data path</h2>
+      <p class="lead">Observers sit beside the stream — parse and Match do not sit in a FIFO after a NIC.</p>
+      <div class="pipeline">
+        <ol>
+          <li><strong>Trace</strong>QEMU log or CSV from pcieshark</li>
+          <li><strong>DPI-C</strong><code>tlp_reader.c</code> packs beats</li>
+          <li><strong>AXIS</strong><code>tdata</code> · <code>tvalid</code> · <code>tready</code></li>
+          <li><strong>Parser</strong>Header fields on <code>hdr_valid</code></li>
+          <li><strong>Match</strong>complete / pair / open</li>
+          <li><strong>Gate</strong>C tally vs HDL · <code>mis=0</code></li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="beats">
+      <h2>Beat layout</h2>
+      <p class="lead">32-bit teaching bus. Not a full PCIe PHY — enough structure to see a TLP the way you see an Ethernet frame on AXIS.</p>
+      <table>
+        <thead>
+          <tr><th>Beat</th><th>Contents</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">0 · tstart</td><td>type, dir, tag, match_hint</td><td>CfgRd=0x04 · CfgWr=0x05 · Cpl=0x0A</td></tr>
+          <tr><td class="mono">1</td><td>requester_id, completer_id</td><td>BDF packed as RID</td></tr>
+          <tr><td class="mono">2</td><td>addr[31:0]</td><td>Config offset or memory address</td></tr>
+          <tr><td class="mono">3 · tlast</td><td>payload DWORD</td><td>Returned or written config data</td></tr>
+        </tbody>
+      </table>
+      <p class="lead" style="margin-top:16px;margin-bottom:0"><code>match_hint=1</code> means QEMU logged the access and its DWORD on one line — pcieshark Match = <code>complete</code>.</p>
+    </section>
+
+    <section id="start">
+      <h2>Quick start</h2>
+      <p class="lead">Linux, Verilator 5.032+, optional GTKWave. Full recipes: <a href="run.html">run book</a>.</p>
+      <p class="pre-label">Install and gate the default sample</p>
+      <pre>sudo apt install build-essential verilator gtkwave
+git clone https://github.com/khademullah/TLP2HDL.git
+cd TLP2HDL
+make gate
+make MAX_TLPS=8 && make wave</pre>
+      <p class="pre-label" style="margin-top:18px">Full pcieshark Zephyr golden capture</p>
+      <pre>make TRACE=/path/to/zephyr_ai_topology_trace.log MAX_TLPS=200</pre>
+      <div class="gate">
+        <span class="gate-badge">mis=0 PASS</span>
+        <p>Default sample: 26 TLPs from the golden fabric slice — CfgRd=25, CfgWr=1, complete=26. C and HDL counts must match.</p>
+      </div>
+    </section>
+
+    <section id="wave">
+      <h2>How to read the wave</h2>
+      <p class="lead">Same discipline as <a href="https://khademullah.github.io/L2AxisBr/run.html">L2AxisBr</a>. A beat is not “valid alone.”</p>
+      <ol class="steps">
+        <li>Zoom until one 10&nbsp;ns clock is one column</li>
+        <li>Group <code>tdata</code>, <code>tvalid</code>, <code>tready</code>, <code>tstart</code>, <code>tlast</code></li>
+        <li>Count a transfer only where both pins are 1</li>
+        <li>One TLP spans <code>tstart</code> through <code>tlast</code> (four beats)</li>
+        <li>Follow <code>hdr_valid</code> for decoded CfgRd / CfgWr</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Inputs</h2>
+      <table>
+        <thead>
+          <tr><th>Format</th><th>Example</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>QEMU log</td>
+            <td class="mono">pci_cfg_read nvme 03:00.0 @0x0 -&gt; 0x101b36</td>
+          </tr>
+          <tr>
+            <td>CSV</td>
+            <td class="mono">timestamp,direction,type,requester,completer,tag,length,addr,payload</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Related work</h2>
+      <div class="related">
+        <a href="https://khademullah.github.io/pcieshark/">
+          <h3>pcieshark</h3>
+          <p>Desktop analyzer and golden QEMU fabric. Capture the TLPs this project replays.</p>
+        </a>
+        <a href="https://khademullah.github.io/Pcap2HDL/">
+          <h3>Pcap2HDL</h3>
+          <p>Ethernet PCAP → DPI-C → AXIS → Verilator. The architectural twin for L2–L4.</p>
+        </a>
+        <a href="https://khademullah.github.io/L2AxisBr/run.html">
+          <h3>L2AxisBr</h3>
+          <p>Two-NIC bridge bench and waveform walkthrough — how to read beats correctly.</p>
+        </a>
+      </div>
+    </section>
+
+    <section>
+      <h2>Roadmap</h2>
+      <table>
+        <thead>
+          <tr><th>Version</th><th>Focus</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">0.1</td><td>QEMU/CSV replay, AXIS-TLP, Match gate, VCD, site</td></tr>
+          <tr><td class="mono">0.2</td><td>CSV dump round-trip, MemRd↔Cpl stress, type filter</td></tr>
+          <tr><td class="mono">0.3</td><td>Golden fabric HDL + pcieshark Wave pane link</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer>
+      <span><a href="https://github.com/khademullah/TLP2HDL/blob/main/LICENSE">AGPL-3.0-only</a> · <a href="https://github.com/khademullah/TLP2HDL">khademullah/TLP2HDL</a> · 0.1.0</span>
+      <span>Teaching AXIS bus — not a full PCIe PHY or VIP.</span>
+    </footer>
+  </div>
+</body>
+</html>

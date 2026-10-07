@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="TLP2HDL">
+  <circle cx="128" cy="128" r="128" fill="#182028"/>
+  <!-- TLP capsules -->
+  <g fill="#00b0d0">
+    <rect x="42" y="78" width="72" height="22" rx="6"/>
+    <rect x="42" y="110" width="72" height="22" rx="6"/>
+    <rect x="42" y="142" width="72" height="22" rx="6"/>
+  </g>
+  <!-- flow chevron -->
+  <path fill="#00b0d0" d="M122 100l18 28-18 28h14l18-28-18-28z"/>
+  <!-- waveform -->
+  <path fill="none" stroke="#e0b018" stroke-width="7" stroke-linecap="square" stroke-linejoin="miter"
+        d="M148 150V106h18v44h16V90h18v60h16V118h18"/>
+  <!-- gold edge fingers -->
+  <g fill="#e0b018">
+    <rect x="72" y="196" width="14" height="22" rx="2"/>
+    <rect x="98" y="196" width="18" height="22" rx="2"/>
+    <rect x="128" y="196" width="18" height="22" rx="2"/>
+    <rect x="158" y="196" width="14" height="22" rx="2"/>
+  </g>
+  <path fill="none" stroke="#e0b018" stroke-width="5" d="M56 188h144"/>
+</svg>

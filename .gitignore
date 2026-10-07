@@ -1,0 +1,10 @@
+obj_dir/
+*.vcd
+*.log
+!traces/*.log
+simulation.log
+simulation_trace.vcd
+.vscode/
+.DS_Store
+*.o
+__pycache__/
