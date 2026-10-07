@@ -1,9 +1,37 @@
-Expected from: make gate
+Expected from: make MAX_TLPS=64
+(or: make gate  — default MAX_TLPS=64)
 
+[MAKE] TRACE=traces/golden_cfg_sample.log MAX_TLPS=64
+./obj_dir/Vtb_tlp_dpi +TRACE="traces/golden_cfg_sample.log" +MAX_TLPS=64 | tee simulation.log
 [C-DPI] loaded 26 TLPs from traces/golden_cfg_sample.log
 [C-DPI] CfgRd=25 CfgWr=1 MemRd=0 MemWr=0 Cpl=0 complete=26
 [TB] TRACE=traces/golden_cfg_sample.log MAX_TLPS=64 loaded=26
-...
+[TLP] #0 CfgRd  cpl=0000 addr=0x0 data=0x00081b36 complete=1
+[TLP] #1 CfgRd  cpl=0000 addr=0x8 data=0x06000000 complete=1
+[TLP] #2 CfgRd  cpl=0000 addr=0xc data=0x00000000 complete=1
+[TLP] #3 CfgRd  cpl=0000 addr=0x10 data=0x00000000 complete=1
+[TLP] #4 CfgRd  cpl=0008 addr=0x0 data=0x000c1b36 complete=1
+[TLP] #5 CfgRd  cpl=0008 addr=0x8 data=0x06040000 complete=1
+[TLP] #6 CfgRd  cpl=0008 addr=0xc data=0x00810000 complete=1
+[TLP] #7 CfgRd  cpl=0008 addr=0x8 data=0x06040000 complete=1
+[TLP] #8 CfgRd  cpl=0008 addr=0x18 data=0x00000000 complete=1
+[TLP] #9 CfgRd  cpl=0008 addr=0x10 data=0x00000000 complete=1
+[TLP] #10 CfgRd  cpl=0100 addr=0x0 data=0x8232104c complete=1
+[TLP] #11 CfgRd  cpl=0100 addr=0x8 data=0x06040002 complete=1
+[TLP] #12 CfgRd  cpl=0100 addr=0xc data=0x00010000 complete=1
+[TLP] #13 CfgRd  cpl=0100 addr=0x8 data=0x06040002 complete=1
+[TLP] #14 CfgRd  cpl=0100 addr=0x18 data=0x00000000 complete=1
+[TLP] #15 CfgRd  cpl=0100 addr=0x10 data=0x00000000 complete=1
+[TLP] #16 CfgRd  cpl=0300 addr=0x0 data=0x00101b36 complete=1
+[TLP] #17 CfgRd  cpl=0300 addr=0x8 data=0x01080202 complete=1
+[TLP] #18 CfgRd  cpl=0300 addr=0xc data=0x00000000 complete=1
+[TLP] #19 CfgRd  cpl=0300 addr=0x10 data=0x00000004 complete=1
+[TLP] #20 CfgRd  cpl=0300 addr=0x14 data=0x00000000 complete=1
+[TLP] #21 CfgWr  cpl=0300 addr=0x10 data=0xffffffff complete=1
+[TLP] #22 CfgRd  cpl=0f00 addr=0x0 data=0x10d38086 complete=1
+[TLP] #23 CfgRd  cpl=0f00 addr=0x8 data=0x02000000 complete=1
+[TLP] #24 CfgRd  cpl=0f00 addr=0xc data=0x00000000 complete=1
+[TLP] #25 CfgRd  cpl=0f00 addr=0x10 data=0x00000000 complete=1
 [SUM] beats=104 tlps_seen=26
 [SUM] HDL  CfgRd=25 CfgWr=1 Cpl=0 complete=26 open=0 matched=0 unmatched=0
 [SUM] C    CfgRd=25 CfgWr=1 Cpl=0 complete=26
