@@ -355,7 +355,7 @@
     <header class="hero">
       <img class="hero-mark" src="assets/logo.png" alt="TLP2HDL logo">
       <div>
-        <p class="eyebrow">Release 0.1.0 · AGPL-3.0-only · Verilator 5.032+</p>
+        <p class="eyebrow">Release 0.2.0 · AGPL-3.0-only · Verilator 5.032+</p>
         <h1>TLP2HDL</h1>
         <p class="tag">PCIe Transaction Layer Packets to cycle-accurate HDL. Replay pcieshark and QEMU traces into Verilator, watch teaching AXIS beats on a wave, and gate Match in C and SystemVerilog.</p>
         <div class="actions">
@@ -521,14 +521,14 @@ make MAX_TLPS=8 && make wave</pre>
         </thead>
         <tbody>
           <tr><td class="mono">0.1</td><td>QEMU/CSV replay, AXIS-TLP, Match gate, VCD, site</td></tr>
-          <tr><td class="mono">0.2</td><td>CSV dump round-trip, MemRd↔Cpl stress, type filter</td></tr>
+          <tr><td class="mono">0.2</td><td>pcieshark CfgRd↔Cpl Match, MemRd stress, TYPE/DIR filter, CSV dump</td></tr>
           <tr><td class="mono">0.3</td><td>Golden fabric HDL + pcieshark Wave pane link</td></tr>
         </tbody>
       </table>
     </section>
 
     <footer>
-      <span><a href="https://github.com/khademullah/TLP2HDL/blob/main/LICENSE">AGPL-3.0-only</a> · <a href="https://github.com/khademullah/TLP2HDL">khademullah/TLP2HDL</a> · 0.1.0</span>
+      <span><a href="https://github.com/khademullah/TLP2HDL/blob/main/LICENSE">AGPL-3.0-only</a> · <a href="https://github.com/khademullah/TLP2HDL">khademullah/TLP2HDL</a> · 0.2.0</span>
       <span>Teaching AXIS bus — not a full PCIe PHY or VIP.</span>
     </footer>
   </div>

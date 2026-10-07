@@ -10,10 +10,13 @@ Reference logs:
 
 | File | Command | Result |
 |------|---------|--------|
-| [`gate_sample.txt`](gate_sample.txt) | `make MAX_TLPS=64` | `mis=0` PASS |
-| [`gate_short_fail.txt`](gate_short_fail.txt) | `make MAX_TLPS=8` | `mis=3` FAIL (expected) |
+| [`gate_sample.txt`](gate_sample.txt) | `make gate` | `mis=0` PASS |
+| [`gate_short.txt`](gate_short.txt) | `make MAX_TLPS=8` | `mis=0` PASS |
+| [`gate_csv_sample.txt`](gate_csv_sample.txt) | `make csv-gate` | `mis=0` PASS (192 matched) |
 
-`MAX_TLPS` caps HDL replay only; C tallies the whole file. Use `MAX_TLPS ≥` loaded TLP count for a passing gate.
+`MAX_TLPS` truncates the loaded set **before** C and HDL tallies, so short and full gates agree.
+
+Match (pcieshark): request **with** payload → `complete`; request **without** → `pair` (open); `Cpl` closes by tag.
 
 ---
 
@@ -31,21 +34,16 @@ Default QEMU sample → C vs HDL Match gate (`mis=0`).
 
 ```bash
 cd /home/khadem/TLP2HDL
-make MAX_TLPS=64
-# or: make gate
+make gate
 grep -E '\[GATE\]|\[SUM\]|\[C-DPI\]' simulation.log
 ```
 
 Expected (full log: [`gate_sample.txt`](gate_sample.txt)):
 
 ```text
-[C-DPI] loaded 26 TLPs from traces/golden_cfg_sample.log
-[C-DPI] CfgRd=25 CfgWr=1 MemRd=0 MemWr=0 Cpl=0 complete=26
-[TB] TRACE=traces/golden_cfg_sample.log MAX_TLPS=64 loaded=26
-...
-[SUM] beats=104 tlps_seen=26
+[C-DPI] CfgRd=25 CfgWr=1 MemRd=0 MemWr=0 Cpl=0 complete=26 pair=0
 [SUM] HDL  CfgRd=25 CfgWr=1 Cpl=0 complete=26 open=0 matched=0 unmatched=0
-[SUM] C    CfgRd=25 CfgWr=1 Cpl=0 complete=26
+[SUM] C    CfgRd=25 CfgWr=1 Cpl=0 complete=26 pair=0
 [GATE] mis=0  PASS
 ```
 
@@ -61,23 +59,60 @@ make MAX_TLPS=8
 make wave
 ```
 
-Gate FAIL is expected here — HDL stops at 8 TLPs while C still reports 26. Full log: [`gate_short_fail.txt`](gate_short_fail.txt).
+Gate PASS expected ([`gate_short.txt`](gate_short.txt)).
 
-```text
-[SUM] beats=32 tlps_seen=8
-[SUM] HDL  CfgRd=8 CfgWr=0 Cpl=0 complete=8 ...
-[SUM] C    CfgRd=25 CfgWr=1 Cpl=0 complete=26
-[MIS] CfgRd HDL=8 C=25
-[MIS] CfgWr HDL=0 C=1
-[MIS] complete HDL=8 C=26
-[GATE] mis=3  FAIL
+---
+
+## 03 — pcieshark CSV (CfgRd↔Cpl Match)
+
+```bash
+cd /home/khadem/TLP2HDL
+make csv-gate
+# or:
+make TRACE=/home/khadem/pcieshark/pcie_trace.csv MAX_TLPS=4000
+```
+
+Expected: `matched=192` `unmatched=0` ([`gate_csv_sample.txt`](gate_csv_sample.txt)).
+
+---
+
+## 04 — MemRd↔Cpl stress
+
+Out-of-order completions + mixed CfgRd pair / complete.
+
+```bash
+cd /home/khadem/TLP2HDL
+make stress
+grep -E '\[GATE\]|\[SUM\]' simulation.log
+```
+
+Expected: `matched=6` `pair=6` `mis=0`.
+
+---
+
+## 05 — Type / direction filter
+
+```bash
+cd /home/khadem/TLP2HDL
+make TRACE=traces/golden_cfg_sample.log TYPE=CfgRd MAX_TLPS=64 gate
+make TRACE=/home/khadem/pcieshark/pcie_trace.csv TYPE=CfgRd,Cpl DIR=TX MAX_TLPS=4000
 ```
 
 ---
 
-## 03 — Full Zephyr trace
+## 06 — CSV dump round-trip
 
-Replay a full pcieshark Zephyr golden fabric capture.
+```bash
+cd /home/khadem/TLP2HDL
+make dump-roundtrip
+# equivalent:
+make TRACE=traces/memrd_cpl_stress.csv DUMP=/tmp/tlp2hdl_roundtrip.csv
+make TRACE=/tmp/tlp2hdl_roundtrip.csv gate
+```
+
+---
+
+## 07 — Full Zephyr trace
 
 ```bash
 cd /home/khadem/TLP2HDL
@@ -87,22 +122,7 @@ grep -E '\[GATE\]|\[SUM\]|\[C-DPI\]' simulation.log
 
 ---
 
-## 04 — CSV replay
-
-QEMU log → pcieshark-style CSV → Verilator replay.
-
-```bash
-cd /home/khadem/TLP2HDL
-python3 scripts/gen_tlp_csv.py traces/golden_cfg_sample.log -o /tmp/tlp2hdl_sample.csv -n 32
-make TRACE=/tmp/tlp2hdl_sample.csv MAX_TLPS=32
-grep -E '\[GATE\]|\[SUM\]' simulation.log
-```
-
----
-
-## 05 — Short wave walk
-
-Eight TLPs for L2AxisBr-style beat reading in GTKWave (same as §02; gate FAIL expected).
+## 08 — Short wave walk
 
 ```bash
 cd /home/khadem/TLP2HDL
@@ -116,7 +136,7 @@ make wave
 2. Group `tdata`, `tvalid`, `tready`, `tstart`, `tlast`  
 3. A transfer is `tvalid && tready` both high  
 4. One TLP is `tstart` … `tlast` (four beats)  
-5. Follow `hdr_valid` for decoded CfgRd/CfgWr  
+5. Follow `hdr_valid` / `hdr_is_pair` / `cnt_matched`  
 
 ---
 
@@ -124,5 +144,5 @@ make wave
 
 ```bash
 cd /home/khadem/TLP2HDL
-make clean && make gate
+make clean && make gate && make stress && make csv-gate
 ```

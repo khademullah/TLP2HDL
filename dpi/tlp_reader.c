@@ -8,6 +8,11 @@
  *   - QEMU pci_cfg_* logs (one-line CfgRd/CfgWr with returned DWORD)
  *   - CSV: timestamp,direction,type,requester,completer,tag,length,addr,payload
  *
+ * Match hints (mirror pcieshark):
+ *   - Request with payload → COMPLETE (QEMU one-line / RX cfg with data)
+ *   - Request without payload → PAIR (open until Cpl)
+ *   - Cpl → NONE (closes by tag)
+ *
  * Emits a teaching AXI-Stream of 32-bit TLP beats (not full PCIe PHY).
  */
 #include <ctype.h>
@@ -36,7 +41,7 @@ enum {
 
 enum {
     MATCH_NONE     = 0,
-    MATCH_COMPLETE = 1, /* QEMU one-line cfg access */
+    MATCH_COMPLETE = 1,
     MATCH_PAIR     = 2
 };
 
@@ -62,12 +67,18 @@ static int beat_idx;
 static int open_ok;
 
 static int c_cfgrd, c_cfgwr, c_memrd, c_memwr, c_cpl, c_complete, c_other;
+static int c_paired; /* requests marked MATCH_PAIR */
+
+static char filt_type[128]; /* e.g. "CfgRd,Cpl" or empty = all */
+static char filt_dir[16];   /* "TX", "RX", or empty = all */
+static int  max_replay;     /* 0 = no cap; else truncate after load */
 
 static uint16_t parse_bdf(const char *s)
 {
     unsigned bus = 0, dev = 0, fn = 0;
     const char *p = s;
-    /* strip domain if present */
+    if (!s || !*s)
+        return 0;
     if (strchr(s, ':') && strchr(strchr(s, ':') + 1, ':'))
         p = strchr(s, ':') + 1;
     if (sscanf(p, "%x:%x.%x", &bus, &dev, &fn) == 3)
@@ -91,6 +102,18 @@ static uint8_t parse_type(const char *s)
     return 0xff;
 }
 
+static const char *type_name(uint8_t t)
+{
+    switch (t) {
+    case TLP_MEM_RD: return "MemRd";
+    case TLP_MEM_WR: return "MemWr";
+    case TLP_CFG_RD: return "CfgRd";
+    case TLP_CFG_WR: return "CfgWr";
+    case TLP_CPL:    return "Cpl";
+    default:         return "Other";
+    }
+}
+
 static uint32_t parse_payload_dword(const char *s)
 {
     unsigned b0 = 0, b1 = 0, b2 = 0, b3 = 0;
@@ -100,6 +123,46 @@ static uint32_t parse_payload_dword(const char *s)
     if (sscanf(s, "%x %x %x %x", &b0, &b1, &b2, &b3) >= 1)
         return (uint32_t)(b0 | (b1 << 8) | (b2 << 16) | (b3 << 24));
     return (uint32_t)strtoul(s, NULL, 16);
+}
+
+static int payload_nonempty(const char *s)
+{
+    if (!s) return 0;
+    while (*s && isspace((unsigned char)*s)) s++;
+    return *s != '\0';
+}
+
+static int type_allowed(uint8_t type)
+{
+    char buf[128];
+    char *tok, *save = NULL;
+    if (!filt_type[0])
+        return 1;
+    strncpy(buf, filt_type, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = '\0';
+    for (tok = strtok_r(buf, ",+|/", &save); tok; tok = strtok_r(NULL, ",+|/", &save)) {
+        while (*tok && isspace((unsigned char)*tok)) tok++;
+        if (!*tok) continue;
+        if (parse_type(tok) == type)
+            return 1;
+    }
+    return 0;
+}
+
+static int dir_allowed(uint8_t dir)
+{
+    if (!filt_dir[0])
+        return 1;
+    if (!strcasecmp(filt_dir, "TX") || !strcmp(filt_dir, "1"))
+        return dir == DIR_TX;
+    if (!strcasecmp(filt_dir, "RX") || !strcmp(filt_dir, "2"))
+        return dir == DIR_RX;
+    return 1;
+}
+
+static void clear_tallies(void)
+{
+    c_cfgrd = c_cfgwr = c_memrd = c_memwr = c_cpl = c_complete = c_other = c_paired = 0;
 }
 
 static void tally(const tlp_rec_t *t)
@@ -114,15 +177,34 @@ static void tally(const tlp_rec_t *t)
     }
     if (t->match_hint == MATCH_COMPLETE)
         c_complete++;
+    if (t->match_hint == MATCH_PAIR)
+        c_paired++;
+}
+
+static void retally(void)
+{
+    int i;
+    clear_tallies();
+    for (i = 0; i < tlp_count; i++)
+        tally(&tlps[i]);
 }
 
 static int push_tlp(tlp_rec_t *t)
 {
+    if (!type_allowed(t->type) || !dir_allowed(t->dir))
+        return 0; /* filtered out — not an error */
     if (tlp_count >= MAX_TLPS)
         return -1;
     tlps[tlp_count++] = *t;
-    tally(t);
     return 0;
+}
+
+static void assign_request_hint(tlp_rec_t *t, const char *payload)
+{
+    if (payload_nonempty(payload))
+        t->match_hint = MATCH_COMPLETE;
+    else
+        t->match_hint = MATCH_PAIR;
 }
 
 static int load_qemu_log(FILE *fp)
@@ -142,7 +224,6 @@ static int load_qemu_log(FILE *fp)
         unsigned long value = 0;
         char arrow[4] = {0};
 
-        /* pci_cfg_read DEV BDF @OFF -> VAL   or write ... <- VAL */
         if (sscanf(p, "pci_cfg_%*s %63s %31s @%lx %3s %lx",
                    dev, bdf, &offset, arrow, &value) < 5)
             continue;
@@ -152,8 +233,8 @@ static int load_qemu_log(FILE *fp)
         t.type = is_write ? TLP_CFG_WR : TLP_CFG_RD;
         t.dir = is_write ? DIR_TX : DIR_RX;
         t.tag = 0;
-        t.match_hint = MATCH_COMPLETE; /* QEMU one-line access */
-        t.requester = 0; /* host / RC side — keep numeric 0; name in log only */
+        t.match_hint = MATCH_COMPLETE;
+        t.requester = 0;
         t.completer = parse_bdf(bdf);
         t.length = 4;
         t.addr = offset;
@@ -161,6 +242,8 @@ static int load_qemu_log(FILE *fp)
         (void)dev;
         if (push_tlp(&t) == 0)
             n++;
+        else if (tlp_count >= MAX_TLPS)
+            break;
     }
     return n;
 }
@@ -168,14 +251,10 @@ static int load_qemu_log(FILE *fp)
 static int load_csv(FILE *fp)
 {
     char line[1024];
-    int n = 0;
     if (!fgets(line, sizeof(line), fp))
         return 0;
-    /* skip header if present */
-    if (strncmp(line, "timestamp", 9) != 0) {
-        /* first data line already consumed conceptually — rewind parse below */
+    if (strncmp(line, "timestamp", 9) != 0)
         rewind(fp);
-    }
 
     while (fgets(line, sizeof(line), fp)) {
         char *save = NULL;
@@ -204,16 +283,35 @@ static int load_csv(FILE *fp)
         t.length = (uint16_t)strtoul(len ? len : "4", NULL, 0);
         t.addr = strtoull(addr ? addr : "0", NULL, 0);
         t.payload = parse_payload_dword(payload);
-        if (t.type == TLP_CFG_RD || t.type == TLP_CFG_WR)
-            t.match_hint = MATCH_COMPLETE;
-        else if (t.type == TLP_MEM_RD)
-            t.match_hint = MATCH_PAIR;
-        else
+
+        if (t.type == TLP_CPL)
             t.match_hint = MATCH_NONE;
-        if (push_tlp(&t) == 0)
-            n++;
+        else
+            assign_request_hint(&t, payload);
+
+        if (push_tlp(&t) < 0)
+            break;
     }
-    return n;
+    return tlp_count;
+}
+
+void set_type_filter(const char *s)
+{
+    filt_type[0] = '\0';
+    if (s && *s && strcmp(s, "0") != 0 && strcasecmp(s, "all") != 0)
+        snprintf(filt_type, sizeof(filt_type), "%s", s);
+}
+
+void set_dir_filter(const char *s)
+{
+    filt_dir[0] = '\0';
+    if (s && *s && strcmp(s, "0") != 0 && strcasecmp(s, "all") != 0)
+        snprintf(filt_dir, sizeof(filt_dir), "%s", s);
+}
+
+void set_max_replay(int n)
+{
+    max_replay = (n > 0) ? n : 0;
 }
 
 int open_tlp_trace(const char *filename)
@@ -222,7 +320,7 @@ int open_tlp_trace(const char *filename)
     const char *ext;
 
     tlp_count = tlp_idx = beat_idx = 0;
-    c_cfgrd = c_cfgwr = c_memrd = c_memwr = c_cpl = c_complete = c_other = 0;
+    clear_tallies();
     open_ok = 0;
 
     if (!filename || !*filename) {
@@ -242,14 +340,60 @@ int open_tlp_trace(const char *filename)
         load_qemu_log(fp);
     fclose(fp);
 
+    if (max_replay > 0 && max_replay < tlp_count)
+        tlp_count = max_replay;
+
+    retally();
+
     open_ok = 1;
-    printf("[C-DPI] loaded %d TLPs from %s\n", tlp_count, filename);
-    printf("[C-DPI] CfgRd=%d CfgWr=%d MemRd=%d MemWr=%d Cpl=%d complete=%d\n",
-           c_cfgrd, c_cfgwr, c_memrd, c_memwr, c_cpl, c_complete);
+    printf("[C-DPI] loaded %d TLPs from %s", tlp_count, filename);
+    if (filt_type[0] || filt_dir[0] || max_replay)
+        printf(" (filter type=%s dir=%s max=%d)",
+               filt_type[0] ? filt_type : "*",
+               filt_dir[0] ? filt_dir : "*",
+               max_replay);
+    printf("\n");
+    printf("[C-DPI] CfgRd=%d CfgWr=%d MemRd=%d MemWr=%d Cpl=%d complete=%d pair=%d\n",
+           c_cfgrd, c_cfgwr, c_memrd, c_memwr, c_cpl, c_complete, c_paired);
     return tlp_count > 0 ? 0 : -1;
 }
 
-/* Returns 1 if a beat is available, 0 at end of stream. */
+int dump_tlp_csv(const char *path)
+{
+    FILE *fp;
+    int i;
+    if (!open_ok || !path || !*path)
+        return -1;
+    fp = fopen(path, "w");
+    if (!fp) {
+        fprintf(stderr, "[C-DPI] cannot write %s\n", path);
+        return -1;
+    }
+    fprintf(fp, "timestamp_ns,direction,type,requester_id,completer_id,tag,length,addr,payload\n");
+    for (i = 0; i < tlp_count; i++) {
+        const tlp_rec_t *t = &tlps[i];
+        fprintf(fp, "%d,%s,%s,%02x:%02x.%x,%02x:%02x.%x,%u,%u,0x%llx,",
+                i,
+                t->dir == DIR_TX ? "TX" : "RX",
+                type_name(t->type),
+                (t->requester >> 8) & 0xff, (t->requester >> 3) & 0x1f, t->requester & 7,
+                (t->completer >> 8) & 0xff, (t->completer >> 3) & 0x1f, t->completer & 7,
+                t->tag, t->length,
+                (unsigned long long)t->addr);
+        /* Keep payload empty for PAIR requests so round-trip preserves Match. */
+        if (t->match_hint != MATCH_PAIR)
+            fprintf(fp, "%02x %02x %02x %02x",
+                    t->payload & 0xff,
+                    (t->payload >> 8) & 0xff,
+                    (t->payload >> 16) & 0xff,
+                    (t->payload >> 24) & 0xff);
+        fputc('\n', fp);
+    }
+    fclose(fp);
+    printf("[C-DPI] dumped %d TLPs to %s\n", tlp_count, path);
+    return 0;
+}
+
 int fetch_next_beat(void)
 {
     if (!open_ok || tlp_idx >= tlp_count)
@@ -309,11 +453,14 @@ int get_c_cfgrd(void) { return c_cfgrd; }
 int get_c_cfgwr(void) { return c_cfgwr; }
 int get_c_complete(void) { return c_complete; }
 int get_c_cpl(void) { return c_cpl; }
+int get_c_paired(void) { return c_paired; }
 
 void close_tlp_trace(void)
 {
     open_ok = 0;
     tlp_count = tlp_idx = beat_idx = 0;
+    filt_type[0] = filt_dir[0] = '\0';
+    max_replay = 0;
 }
 
 #ifdef __cplusplus

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0 — 2026-10-07
+
+- Match mirrors pcieshark: request with payload → `complete`; empty → `pair`; `Cpl` closes by tag
+- `pcie_trace.csv` gates clean: `matched=192` `unmatched=0` (`make csv-gate`)
+- MemRd↔Cpl out-of-order stress trace (`make stress`)
+- Plusargs / make vars: `TYPE=`, `DIR=`, `DUMP=`
+- `MAX_TLPS` truncates before C and HDL tallies (short wave also `mis=0`)
+- CSV dump round-trip (`make dump-roundtrip`)
+- Tracker depth 64; scoreboard checks Cpl, matched↔pair, open==0
+
 ## 0.1.0 — 2026-10-07
 
 - License: **AGPL-3.0-only** (strong copyleft; replaces MIT)

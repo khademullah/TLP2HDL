@@ -1,0 +1,11 @@
+Expected from: make MAX_TLPS=8
+
+MAX_TLPS truncates the loaded set before C and HDL tallies, so short replay now gates cleanly.
+
+[C-DPI] loaded 8 TLPs from traces/golden_cfg_sample.log (filter type=* dir=* max=8)
+[C-DPI] CfgRd=8 CfgWr=0 MemRd=0 MemWr=0 Cpl=0 complete=8 pair=0
+[TB] TRACE=traces/golden_cfg_sample.log MAX_TLPS=8 TYPE=* DIR=* loaded=8
+[SUM] beats=32 tlps_seen=8
+[SUM] HDL  CfgRd=8 CfgWr=0 Cpl=0 complete=8 open=0 matched=0 unmatched=0
+[SUM] C    CfgRd=8 CfgWr=0 Cpl=0 complete=8 pair=0
+[GATE] mis=0  PASS

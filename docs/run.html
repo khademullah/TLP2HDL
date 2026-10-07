@@ -117,25 +117,41 @@ grep -E '\[GATE\]|\[SUM\]' simulation.log</pre>
 [GATE] mis=0  PASS</div>
 
     <h2><span class="num">02</span><br>Wave</h2>
-    <p class="lead">Short replay, then open GTKWave.</p>
+    <p class="lead">Short replay, then open GTKWave. <code>MAX_TLPS</code> truncates C and HDL together (<code>mis=0</code>).</p>
     <pre>cd /home/khadem/TLP2HDL
 make MAX_TLPS=8
 make wave</pre>
 
-    <h2><span class="num">03</span><br>Full Zephyr trace</h2>
+    <h2><span class="num">03</span><br>pcieshark CSV Match</h2>
+    <p class="lead">Full capture: TX CfgRd opens, Cpl closes by tag → <code>matched=192</code>.</p>
+    <pre>cd /home/khadem/TLP2HDL
+make csv-gate
+grep -E '\[GATE\]|\[SUM\]' simulation.log</pre>
+    <div class="expect">[SUM] HDL  … complete=1209 open=0 matched=192 unmatched=0
+[SUM] C    … complete=1209 pair=192
+[GATE] mis=0  PASS</div>
+
+    <h2><span class="num">04</span><br>MemRd↔Cpl stress</h2>
+    <p class="lead">Out-of-order completions + mixed CfgRd pair/complete.</p>
+    <pre>cd /home/khadem/TLP2HDL
+make stress</pre>
+
+    <h2><span class="num">05</span><br>Type / direction filter</h2>
+    <pre>cd /home/khadem/TLP2HDL
+make TYPE=CfgRd MAX_TLPS=64 gate
+make TRACE=/home/khadem/pcieshark/pcie_trace.csv TYPE=CfgRd,Cpl DIR=TX MAX_TLPS=4000</pre>
+
+    <h2><span class="num">06</span><br>CSV dump round-trip</h2>
+    <pre>cd /home/khadem/TLP2HDL
+make dump-roundtrip</pre>
+
+    <h2><span class="num">07</span><br>Full Zephyr trace</h2>
     <p class="lead">Replay a full pcieshark Zephyr golden fabric capture.</p>
     <pre>cd /home/khadem/TLP2HDL
 make TRACE=/home/khadem/pcieshark/zephyr_ai_topology_trace.log MAX_TLPS=200
 grep -E '\[GATE\]|\[SUM\]|\[C-DPI\]' simulation.log</pre>
 
-    <h2><span class="num">04</span><br>CSV replay</h2>
-    <p class="lead">QEMU log → pcieshark-style CSV → Verilator.</p>
-    <pre>cd /home/khadem/TLP2HDL
-python3 scripts/gen_tlp_csv.py traces/golden_cfg_sample.log -o /tmp/tlp2hdl_sample.csv -n 32
-make TRACE=/tmp/tlp2hdl_sample.csv MAX_TLPS=32
-grep -E '\[GATE\]|\[SUM\]' simulation.log</pre>
-
-    <h2><span class="num">05</span><br>Short wave walk</h2>
+    <h2><span class="num">08</span><br>Short wave walk</h2>
     <p class="lead">Eight TLPs for beat-by-beat reading.</p>
     <pre>cd /home/khadem/TLP2HDL
 make MAX_TLPS=8

@@ -5,7 +5,11 @@
 
 module tb_tlp_dpi;
 
+    import "DPI-C" function void set_type_filter(input string s);
+    import "DPI-C" function void set_dir_filter(input string s);
+    import "DPI-C" function void set_max_replay(input int n);
     import "DPI-C" function int open_tlp_trace(input string filename);
+    import "DPI-C" function int dump_tlp_csv(input string path);
     import "DPI-C" function int fetch_next_beat();
     import "DPI-C" function int get_beat_start();
     import "DPI-C" function int get_beat_last();
@@ -15,6 +19,7 @@ module tb_tlp_dpi;
     import "DPI-C" function int get_c_cfgwr();
     import "DPI-C" function int get_c_complete();
     import "DPI-C" function int get_c_cpl();
+    import "DPI-C" function int get_c_paired();
     import "DPI-C" function void close_tlp_trace();
 
     reg         clk;
@@ -38,6 +43,7 @@ module tb_tlp_dpi;
     wire        hdr_is_cfgwr;
     wire        hdr_is_cpl;
     wire        hdr_is_complete;
+    wire        hdr_is_pair;
 
     wire [31:0] cnt_cfgrd;
     wire [31:0] cnt_cfgwr;
@@ -55,6 +61,9 @@ module tb_tlp_dpi;
     integer is_last;
     integer mis;
     string  trace_path;
+    string  type_filt;
+    string  dir_filt;
+    string  dump_path;
 
     tlp_header_parser u_parser (
         .clk(clk),
@@ -76,7 +85,8 @@ module tb_tlp_dpi;
         .hdr_is_cfgrd(hdr_is_cfgrd),
         .hdr_is_cfgwr(hdr_is_cfgwr),
         .hdr_is_cpl(hdr_is_cpl),
-        .hdr_is_complete(hdr_is_complete)
+        .hdr_is_complete(hdr_is_complete),
+        .hdr_is_pair(hdr_is_pair)
     );
 
     tlp_match_tracker u_match (
@@ -87,8 +97,10 @@ module tb_tlp_dpi;
         .hdr_is_cfgwr(hdr_is_cfgwr),
         .hdr_is_cpl(hdr_is_cpl),
         .hdr_is_complete(hdr_is_complete),
+        .hdr_is_pair(hdr_is_pair),
         .hdr_tag(hdr_tag),
         .hdr_requester(hdr_requester),
+        .hdr_completer(hdr_completer),
         .cnt_cfgrd(cnt_cfgrd),
         .cnt_cfgwr(cnt_cfgwr),
         .cnt_cpl(cnt_cpl),
@@ -105,14 +117,17 @@ module tb_tlp_dpi;
         if (rst_n && hdr_valid) begin
             tlp_seen <= tlp_seen + 1;
             if (hdr_is_cfgrd)
-                $display("[TLP] #%0d CfgRd  cpl=%04h addr=0x%0h data=0x%08h complete=%0d",
-                         tlp_seen, hdr_completer, hdr_addr, hdr_payload, hdr_is_complete);
+                $display("[TLP] #%0d CfgRd  cpl=%04h addr=0x%0h data=0x%08h complete=%0d pair=%0d",
+                         tlp_seen, hdr_completer, hdr_addr, hdr_payload, hdr_is_complete, hdr_is_pair);
             else if (hdr_is_cfgwr)
                 $display("[TLP] #%0d CfgWr  cpl=%04h addr=0x%0h data=0x%08h complete=%0d",
                          tlp_seen, hdr_completer, hdr_addr, hdr_payload, hdr_is_complete);
             else if (hdr_is_cpl)
-                $display("[TLP] #%0d Cpl    req=%04h tag=%0d",
-                         tlp_seen, hdr_requester, hdr_tag);
+                $display("[TLP] #%0d Cpl    req=%04h cpl=%04h tag=%0d",
+                         tlp_seen, hdr_requester, hdr_completer, hdr_tag);
+            else if (hdr_is_pair)
+                $display("[TLP] #%0d MemRd  req=%04h tag=%0d addr=0x%0h pair=1",
+                         tlp_seen, hdr_requester, hdr_tag, hdr_addr);
             else
                 $display("[TLP] #%0d type=0x%02h addr=0x%0h",
                          tlp_seen, hdr_type, hdr_addr);
@@ -132,11 +147,20 @@ module tb_tlp_dpi;
         beat_count = 0;
         tlp_seen   = 0;
         mis        = 0;
+        type_filt  = "";
+        dir_filt   = "";
+        dump_path  = "";
 
         if (!$value$plusargs("TRACE=%s", trace_path))
             trace_path = "traces/golden_cfg_sample.log";
         if (!$value$plusargs("MAX_TLPS=%d", max_tlps))
             max_tlps = 64;
+        if ($value$plusargs("TYPE=%s", type_filt))
+            set_type_filter(type_filt);
+        if ($value$plusargs("DIR=%s", dir_filt))
+            set_dir_filter(dir_filt);
+        void'($value$plusargs("DUMP=%s", dump_path));
+        set_max_replay(max_tlps);
 
         repeat (4) @(posedge clk);
         rst_n = 1'b1;
@@ -147,8 +171,14 @@ module tb_tlp_dpi;
             $display("[TB] FAIL open_tlp_trace(%s)", trace_path);
             $finish;
         end
-        $display("[TB] TRACE=%s MAX_TLPS=%0d loaded=%0d",
-                 trace_path, max_tlps, get_tlp_count());
+        if (dump_path.len() != 0)
+            void'(dump_tlp_csv(dump_path));
+
+        $display("[TB] TRACE=%s MAX_TLPS=%0d TYPE=%s DIR=%s loaded=%0d",
+                 trace_path, max_tlps,
+                 (type_filt.len() != 0) ? type_filt : "*",
+                 (dir_filt.len() != 0) ? dir_filt : "*",
+                 get_tlp_count());
 
         while (fetch_next_beat() != 0) begin
             is_start = get_beat_start();
@@ -165,9 +195,6 @@ module tb_tlp_dpi;
             tvalid <= 1'b0;
             tstart <= 1'b0;
             tlast  <= 1'b0;
-
-            if ((beat_count / 4) >= max_tlps)
-                break;
         end
 
         repeat (8) @(posedge clk);
@@ -175,8 +202,8 @@ module tb_tlp_dpi;
         $display("[SUM] beats=%0d tlps_seen=%0d", beat_count, tlp_seen);
         $display("[SUM] HDL  CfgRd=%0d CfgWr=%0d Cpl=%0d complete=%0d open=%0d matched=%0d unmatched=%0d",
                  cnt_cfgrd, cnt_cfgwr, cnt_cpl, cnt_complete, cnt_open, cnt_matched, cnt_unmatched);
-        $display("[SUM] C    CfgRd=%0d CfgWr=%0d Cpl=%0d complete=%0d",
-                 get_c_cfgrd(), get_c_cfgwr(), get_c_cpl(), get_c_complete());
+        $display("[SUM] C    CfgRd=%0d CfgWr=%0d Cpl=%0d complete=%0d pair=%0d",
+                 get_c_cfgrd(), get_c_cfgwr(), get_c_cpl(), get_c_complete(), get_c_paired());
 
         if (cnt_cfgrd !== get_c_cfgrd()) begin
             $display("[MIS] CfgRd HDL=%0d C=%0d", cnt_cfgrd, get_c_cfgrd());
@@ -186,12 +213,24 @@ module tb_tlp_dpi;
             $display("[MIS] CfgWr HDL=%0d C=%0d", cnt_cfgwr, get_c_cfgwr());
             mis = mis + 1;
         end
+        if (cnt_cpl !== get_c_cpl()) begin
+            $display("[MIS] Cpl HDL=%0d C=%0d", cnt_cpl, get_c_cpl());
+            mis = mis + 1;
+        end
         if (cnt_complete !== get_c_complete()) begin
             $display("[MIS] complete HDL=%0d C=%0d", cnt_complete, get_c_complete());
             mis = mis + 1;
         end
+        if (cnt_matched !== get_c_paired()) begin
+            $display("[MIS] matched HDL=%0d C_pair=%0d", cnt_matched, get_c_paired());
+            mis = mis + 1;
+        end
         if (cnt_unmatched !== 0) begin
             $display("[MIS] unmatched=%0d", cnt_unmatched);
+            mis = mis + 1;
+        end
+        if (cnt_open !== 0) begin
+            $display("[MIS] open=%0d (dangling requests)", cnt_open);
             mis = mis + 1;
         end
 

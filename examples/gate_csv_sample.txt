@@ -1,0 +1,12 @@
+Expected from: make csv-gate
+(or: make TRACE=/home/khadem/pcieshark/pcie_trace.csv MAX_TLPS=4000)
+
+pcieshark CSV: TX CfgRd (empty payload) opens PAIR; RX Cpl closes by tag;
+RX CfgRd / CfgWr with payload are COMPLETE.
+
+[C-DPI] loaded 1593 TLPs from /home/khadem/pcieshark/pcie_trace.csv (filter type=* dir=* max=4000)
+[C-DPI] CfgRd=852 CfgWr=549 MemRd=0 MemWr=0 Cpl=192 complete=1209 pair=192
+[SUM] beats=6372 tlps_seen=1593
+[SUM] HDL  CfgRd=852 CfgWr=549 Cpl=192 complete=1209 open=0 matched=192 unmatched=0
+[SUM] C    CfgRd=852 CfgWr=549 Cpl=192 complete=1209 pair=192
+[GATE] mis=0  PASS

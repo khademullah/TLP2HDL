@@ -58,7 +58,13 @@ All recipes are copy-paste ready in [`examples/README.md`](examples/README.md).
 | 2 | `addr[31:0]` |
 | 3 (`tlast`) | payload DWORD |
 
-`match_hint=1` means QEMU logged the config access and its DWORD on one line (pcieshark Match = `complete`).
+Match hints (pcieshark):
+
+| Hint | Value | Meaning |
+|------|-------|---------|
+| `complete` | 1 | Request with payload (QEMU one-line / RX cfg) |
+| `pair` | 2 | Request without payload — open until `Cpl` |
+| (none) | 0 | `Cpl` — closes by tag |
 
 ## Inputs
 
@@ -67,7 +73,7 @@ All recipes are copy-paste ready in [`examples/README.md`](examples/README.md).
 | QEMU log | `pci_cfg_read nvme 03:00.0 @0x0 -> 0x101b36` |
 | CSV | `timestamp,direction,type,requester,completer,tag,length,addr,payload` |
 
-Default sample: `traces/golden_cfg_sample.log` (slice of the pcieshark Zephyr golden fabric).
+Default sample: `traces/golden_cfg_sample.log`. Stress: `traces/memrd_cpl_stress.csv`.
 
 ## Make targets
 
@@ -75,10 +81,13 @@ Default sample: `traces/golden_cfg_sample.log` (slice of the pcieshark Zephyr go
 |--------|---------|
 | `make` / `make run` | Compile + simulate |
 | `make gate` | Fail unless `mis=0` |
+| `make stress` | MemRd↔Cpl out-of-order stress |
+| `make csv-gate` | Full pcieshark `pcie_trace.csv` |
+| `make dump-roundtrip` | Dump CSV → replay → gate |
 | `make wave` | GTKWave on `simulation_trace.vcd` |
 | `make clean` | Remove `obj_dir` and VCD |
 
-Plusargs: `+TRACE=path` `+MAX_TLPS=N`.
+Plusargs / make vars: `TRACE=` `MAX_TLPS=` `TYPE=CfgRd,Cpl` `DIR=TX` `DUMP=out.csv`.
 
 ## Wave tips (L2AxisBr style)
 
@@ -118,8 +127,8 @@ Colors match the family: navy `#182028`, cyan `#00b0d0`, gold `#e0b018`.
 
 ## Roadmap
 
-- **v0.1** (this tree) — QEMU/CSV replay, AXIS-TLP, Match gate, VCD, examples, logo
-- **v0.2** — CSV dump round-trip, MemRd↔Cpl pairing stress, type filter
+- **v0.1** — QEMU/CSV replay, AXIS-TLP, Match gate, VCD, examples, logo
+- **v0.2** (this tree) — pcieshark CfgRd↔Cpl Match, MemRd stress, TYPE/DIR filter, CSV dump round-trip
 - **v0.3** — Golden fabric HDL + pcieshark GUI “Wave” pane link
 
 Related: [pcieshark](https://github.com/khademullah/pcieshark) · [Pcap2HDL](https://github.com/khademullah/Pcap2HDL) · [L2AxisBr](https://github.com/khademullah/L2AxisBr)

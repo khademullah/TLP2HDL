@@ -28,7 +28,8 @@ module tlp_header_parser (
     output reg         hdr_is_cfgrd,
     output reg         hdr_is_cfgwr,
     output reg         hdr_is_cpl,
-    output reg         hdr_is_complete
+    output reg         hdr_is_complete,
+    output reg         hdr_is_pair
 );
 
     localparam byte TLP_CFG_RD = 8'h04;
@@ -55,6 +56,7 @@ module tlp_header_parser (
             hdr_is_cfgwr    <= 1'b0;
             hdr_is_cpl      <= 1'b0;
             hdr_is_complete <= 1'b0;
+            hdr_is_pair     <= 1'b0;
         end else begin
             hdr_valid <= 1'b0;
             if (fire) begin
@@ -84,6 +86,7 @@ module tlp_header_parser (
                         hdr_is_cfgwr    <= (hdr_type == TLP_CFG_WR);
                         hdr_is_cpl      <= (hdr_type == TLP_CPL);
                         hdr_is_complete <= (hdr_match_hint == 8'd1);
+                        hdr_is_pair     <= (hdr_match_hint == 8'd2);
                         hdr_valid       <= tlast;
                         beat            <= 2'd0;
                     end
