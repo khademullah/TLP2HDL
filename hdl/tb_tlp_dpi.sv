@@ -10,6 +10,9 @@ module tb_tlp_dpi;
     import "DPI-C" function void set_max_replay(input int n);
     import "DPI-C" function void set_drop_cpl(input int en);
     import "DPI-C" function void set_completer_filter(input int bdf);
+    import "DPI-C" function void set_completer_filters(input string bdfs);
+    import "DPI-C" function int get_bdf_filter_count();
+    import "DPI-C" function int get_bdf_filter(input int idx);
     import "DPI-C" function int open_tlp_trace(input string filename);
     import "DPI-C" function int dump_tlp_csv(input string path);
     import "DPI-C" function int fetch_next_beat();
@@ -55,8 +58,15 @@ module tb_tlp_dpi;
     wire [31:0] cnt_matched;
     wire [31:0] cnt_unmatched;
 
+    localparam int DUT_N = 8;
+
     reg         dut_enable;
-    reg  [15:0] dut_bdf;
+    reg  [DUT_N-1:0]    ep_enable;
+    reg  [16*DUT_N-1:0] ep_bdf_pack;
+    integer             ep_n;
+    string              dut_bdfs_str;
+    string              dut_label;
+
     wire [31:0] dut_tdata;
     wire        dut_tvalid;
     reg         dut_tready;
@@ -67,6 +77,9 @@ module tb_tlp_dpi;
     wire [31:0] dut_hit_wr;
     wire [31:0] dut_cpl_tx;
     wire [31:0] dut_seed;
+    wire [3:0]  dut_ep_count;
+    wire [15:0] dut_hit_bdf;
+    wire        dut_hit_any;
     wire [15:0] dut_vendor_id;
     wire [15:0] dut_device_id;
     wire [15:0] dut_command;
@@ -146,11 +159,11 @@ module tb_tlp_dpi;
         .cnt_unmatched(cnt_unmatched)
     );
 
-    tlp_cfg_dut u_dut (
+    tlp_cfg_fabric #(.N(DUT_N)) u_fabric (
         .clk(clk),
         .rst_n(rst_n),
-        .enable(dut_enable),
-        .dut_bdf(dut_bdf),
+        .ep_enable(ep_enable),
+        .ep_bdf_pack(ep_bdf_pack),
         .hdr_valid(hdr_valid),
         .hdr_is_cfgrd(hdr_is_cfgrd),
         .hdr_is_cfgwr(hdr_is_cfgwr),
@@ -167,29 +180,32 @@ module tb_tlp_dpi;
         .m_tstart(dut_tstart),
         .m_tlast(dut_tlast),
         .m_busy(dut_busy),
+        .hit_bdf(dut_hit_bdf),
+        .hit_any(dut_hit_any),
+        .hit_vendor_id(dut_vendor_id),
+        .hit_device_id(dut_device_id),
+        .hit_command(dut_command),
+        .hit_status(dut_status),
+        .hit_revision_id(dut_revision_id),
+        .hit_prog_if(dut_prog_if),
+        .hit_subclass(dut_subclass),
+        .hit_class_code(dut_class_code),
+        .hit_header_type(dut_header_type),
+        .hit_bar0(dut_bar0),
+        .hit_bar1(dut_bar1),
+        .hit_subsys_ven(dut_subsys_ven),
+        .hit_subsys_id(dut_subsys_id),
+        .hit_cap_ptr(dut_cap_ptr),
+        .hit_int_line(dut_int_line),
+        .hit_int_pin(dut_int_pin),
+        .hit_cmd_io(dut_cmd_io),
+        .hit_cmd_mem(dut_cmd_mem),
+        .hit_cmd_bme(dut_cmd_bme),
         .cnt_hit_rd(dut_hit_rd),
         .cnt_hit_wr(dut_hit_wr),
         .cnt_cpl_tx(dut_cpl_tx),
         .cnt_seed(dut_seed),
-        .vendor_id(dut_vendor_id),
-        .device_id(dut_device_id),
-        .command(dut_command),
-        .status(dut_status),
-        .revision_id(dut_revision_id),
-        .prog_if(dut_prog_if),
-        .subclass(dut_subclass),
-        .class_code(dut_class_code),
-        .header_type(dut_header_type),
-        .bar0(dut_bar0),
-        .bar1(dut_bar1),
-        .subsystem_vendor_id(dut_subsys_ven),
-        .subsystem_id(dut_subsys_id),
-        .capabilities_ptr(dut_cap_ptr),
-        .interrupt_line(dut_int_line),
-        .interrupt_pin(dut_int_pin),
-        .cmd_io_space(dut_cmd_io),
-        .cmd_mem_space(dut_cmd_mem),
-        .cmd_bus_master(dut_cmd_bme)
+        .ep_count(dut_ep_count)
     );
 
     initial clk = 1'b0;
@@ -280,16 +296,30 @@ module tb_tlp_dpi;
                 $display("[TLP] #%0d type=0x%02h addr=0x%0h",
                          tlp_seen, hdr_type, hdr_addr);
 
-            if (dut_enable && (hdr_completer == dut_bdf)) begin
-                if (hdr_is_cfgwr)
-                    $display("[DUT] WR   @0x%02h  %s", hdr_addr[7:0],
-                             decode_cfg_dword(hdr_addr[7:0], hdr_payload));
-                else if (hdr_is_cfgrd && hdr_is_complete)
-                    $display("[DUT] SEED @0x%02h  %s", hdr_addr[7:0],
-                             decode_cfg_dword(hdr_addr[7:0], hdr_payload));
-                else if (hdr_is_cfgrd && hdr_is_pair)
-                    $display("[DUT] RD   @0x%02h  %s", hdr_addr[7:0],
-                             decode_cfg_dword(hdr_addr[7:0], dut_image_dword(hdr_addr[7:0])));
+            if (dut_enable && dut_hit_any) begin
+                // Prefix bdf= when fabric has >1 EP so multi-BDF demos stay readable
+                if (hdr_is_cfgwr) begin
+                    if (dut_ep_count > 4'd1)
+                        $display("[DUT] WR   bdf=%04h @0x%02h  %s", dut_hit_bdf, hdr_addr[7:0],
+                                 decode_cfg_dword(hdr_addr[7:0], hdr_payload));
+                    else
+                        $display("[DUT] WR   @0x%02h  %s", hdr_addr[7:0],
+                                 decode_cfg_dword(hdr_addr[7:0], hdr_payload));
+                end else if (hdr_is_cfgrd && hdr_is_complete) begin
+                    if (dut_ep_count > 4'd1)
+                        $display("[DUT] SEED bdf=%04h @0x%02h  %s", dut_hit_bdf, hdr_addr[7:0],
+                                 decode_cfg_dword(hdr_addr[7:0], hdr_payload));
+                    else
+                        $display("[DUT] SEED @0x%02h  %s", hdr_addr[7:0],
+                                 decode_cfg_dword(hdr_addr[7:0], hdr_payload));
+                end else if (hdr_is_cfgrd && hdr_is_pair) begin
+                    if (dut_ep_count > 4'd1)
+                        $display("[DUT] RD   bdf=%04h @0x%02h  %s", dut_hit_bdf, hdr_addr[7:0],
+                                 decode_cfg_dword(hdr_addr[7:0], dut_image_dword(hdr_addr[7:0])));
+                    else
+                        $display("[DUT] RD   @0x%02h  %s", hdr_addr[7:0],
+                                 decode_cfg_dword(hdr_addr[7:0], dut_image_dword(hdr_addr[7:0])));
+                end
             end
         end
     end
@@ -343,13 +373,17 @@ module tb_tlp_dpi;
         tdata      = 32'd0;
         dut_tready = 1'b0;
         dut_enable = 1'b0;
-        dut_bdf    = 16'd0;
+        ep_enable  = '0;
+        ep_bdf_pack = '0;
+        ep_n       = 0;
         beat_count = 0;
         tlp_seen   = 0;
         mis        = 0;
         type_filt  = "";
         dir_filt   = "";
         dump_path  = "";
+        dut_bdfs_str = "";
+        dut_label  = "off";
         dut_bdf_i  = -1;
 
         if (!$value$plusargs("TRACE=%s", trace_path))
@@ -361,11 +395,34 @@ module tb_tlp_dpi;
         if ($value$plusargs("DIR=%s", dir_filt))
             set_dir_filter(dir_filt);
         void'($value$plusargs("DUMP=%s", dump_path));
-        if ($value$plusargs("DUT_BDF=%h", dut_bdf_i)) begin
+
+        // Multi-BDF: +DUT_BDFS=0100,0200,0300  (takes precedence)
+        // Single-BDF: +DUT_BDF=0300  (unchanged demo path)
+        if ($value$plusargs("DUT_BDFS=%s", dut_bdfs_str) && dut_bdfs_str.len() != 0) begin
+            automatic int n;
+            automatic int bi;
+            automatic int bv;
             dut_enable = 1'b1;
-            dut_bdf    = dut_bdf_i[15:0];
+            set_drop_cpl(1);
+            set_completer_filters(dut_bdfs_str);
+            n = get_bdf_filter_count();
+            if (n > DUT_N) n = DUT_N;
+            for (bi = 0; bi < n; bi++) begin
+                bv = get_bdf_filter(bi);
+                ep_enable[bi] = 1'b1;
+                ep_bdf_pack[16*bi +: 16] = bv[15:0];
+            end
+            ep_n = n;
+            dut_label = dut_bdfs_str;
+        end else if ($value$plusargs("DUT_BDF=%h", dut_bdf_i)) begin
+            dut_enable = 1'b1;
+            ep_enable  = '0;
+            ep_enable[0] = 1'b1;
+            ep_bdf_pack[15:0] = dut_bdf_i[15:0];
+            ep_n = 1;
             set_drop_cpl(1);
             set_completer_filter(dut_bdf_i);
+            dut_label = $sformatf("%04h", dut_bdf_i[15:0]);
         end
         set_max_replay(max_tlps);
 
@@ -381,12 +438,11 @@ module tb_tlp_dpi;
         if (dump_path.len() != 0)
             void'(dump_tlp_csv(dump_path));
 
-        $display("[TB] TRACE=%s MAX_TLPS=%0d TYPE=%s DIR=%s DUT_BDF=%s loaded=%0d",
+        $display("[TB] TRACE=%s MAX_TLPS=%0d TYPE=%s DIR=%s DUT_BDF=%s eps=%0d loaded=%0d",
                  trace_path, max_tlps,
                  (type_filt.len() != 0) ? type_filt : "*",
                  (dir_filt.len() != 0) ? dir_filt : "*",
-                 dut_enable ? $sformatf("%04h", dut_bdf) : "off",
-                 get_tlp_count());
+                 dut_label, ep_n, get_tlp_count());
 
         while (fetch_next_beat() != 0) begin
             is_start = get_beat_start();
@@ -406,16 +462,26 @@ module tb_tlp_dpi;
         $display("[SUM] C    CfgRd=%0d CfgWr=%0d Cpl=%0d complete=%0d pair=%0d",
                  get_c_cfgrd(), get_c_cfgwr(), get_c_cpl(), get_c_complete(), get_c_paired());
         if (dut_enable) begin
-            $display("[DUT] bdf=%04h hit_rd=%0d hit_wr=%0d cpl_tx=%0d seed=%0d",
-                     dut_bdf, dut_hit_rd, dut_hit_wr, dut_cpl_tx, dut_seed);
-            $display("[DUT] VendorID=0x%04h DeviceID=0x%04h Class=0x%02h:%02h:%02h Rev=0x%02h",
-                     dut_vendor_id, dut_device_id, dut_class_code, dut_subclass,
-                     dut_prog_if, dut_revision_id);
-            $display("[DUT] Command=0x%04h (IO=%0d Mem=%0d BME=%0d) Status=0x%04h HeaderType=0x%02h",
-                     dut_command, dut_cmd_io, dut_cmd_mem, dut_cmd_bme, dut_status, dut_header_type);
-            $display("[DUT] BAR0=0x%08h BAR1=0x%08h Subsys=0x%04h:0x%04h CapPtr=0x%02h Int=%0d/%0d",
-                     dut_bar0, dut_bar1, dut_subsys_ven, dut_subsys_id,
-                     dut_cap_ptr, dut_int_line, dut_int_pin);
+            $display("[DUT] bdfs=%s eps=%0d hit_rd=%0d hit_wr=%0d cpl_tx=%0d seed=%0d",
+                     dut_label, dut_ep_count, dut_hit_rd, dut_hit_wr, dut_cpl_tx, dut_seed);
+            if (ep_n == 1) begin
+                $display("[DUT] VendorID=0x%04h DeviceID=0x%04h Class=0x%02h:%02h:%02h Rev=0x%02h",
+                         dut_vendor_id, dut_device_id, dut_class_code, dut_subclass,
+                         dut_prog_if, dut_revision_id);
+                $display("[DUT] Command=0x%04h (IO=%0d Mem=%0d BME=%0d) Status=0x%04h HeaderType=0x%02h",
+                         dut_command, dut_cmd_io, dut_cmd_mem, dut_cmd_bme, dut_status, dut_header_type);
+                $display("[DUT] BAR0=0x%08h BAR1=0x%08h Subsys=0x%04h:0x%04h CapPtr=0x%02h Int=%0d/%0d",
+                         dut_bar0, dut_bar1, dut_subsys_ven, dut_subsys_id,
+                         dut_cap_ptr, dut_int_line, dut_int_pin);
+            end else begin
+                begin : dump_eps
+                    integer ei;
+                    for (ei = 0; ei < DUT_N; ei = ei + 1) begin
+                        if (ep_enable[ei])
+                            $display("[DUT] ep[%0d] bdf=%04h", ei, ep_bdf_pack[16*ei +: 16]);
+                    end
+                end
+            end
         end
 
         if (cnt_cfgrd !== get_c_cfgrd()) begin

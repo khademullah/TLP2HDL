@@ -160,6 +160,17 @@
     .position p { margin: 0; color: var(--muted); font-size: 14px; }
     .position .eq { color: var(--gold); font-family: "IBM Plex Mono", monospace; font-size: 12px; margin-bottom: 8px; }
 
+    .demo {
+      display: block;
+      width: 100%;
+      max-width: 920px;
+      margin: 0 auto 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0c1014;
+    }
+    .demo-note { color: var(--muted); font-size: 13px; text-align: center; margin: 0; }
+
     .grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -344,6 +355,8 @@
       <div class="nav-links">
         <a href="#path">Path</a>
         <a href="#dut">DUT</a>
+        <a href="#demo">Demo</a>
+        <a href="#demo-multi">Multi</a>
         <a href="#beats">Beats</a>
         <a href="#start">Start</a>
         <a href="#wave">Wave</a>
@@ -459,10 +472,29 @@
       <p class="pre-label" style="margin-top:18px">Real pcieshark capture (PAIR + seed)</p>
       <pre>make TRACE=/path/to/pcie_trace.csv DUT_BDF=0100 MAX_TLPS=4000
 # 0100 = 00:01.0 · cpl_tx=8 seed=29 · mis=0</pre>
+      <p class="pre-label" style="margin-top:18px">Multi-BDF fabric demo</p>
+      <pre>make dut-multi
+# DUT_BDFS=0100,0200 · eps=2 · DeviceID 0x000c/0x000d · mis=0</pre>
+      <p class="pre-label" style="margin-top:18px">Real capture (up to 8 EPs)</p>
+      <pre>make TRACE=/path/to/pcie_trace.csv DUT_BDFS=0100,0200 MAX_TLPS=4000</pre>
       <div class="gate">
         <span class="gate-badge">DUT · mis=0</span>
-        <p>Capture Cpls are dropped for that BDF. Match closes on DUT completions. Use a BDF with TX empty CfgRd to see <code>cpl_tx</code>; all-complete BDF (e.g. <code>0e01</code>) only seeds and writes.</p>
+        <p>Capture Cpls are dropped for that BDF. Match closes on DUT completions. Use a BDF with TX empty CfgRd to see <code>cpl_tx</code>; all-complete BDF (e.g. <code>0e01</code>) only seeds and writes. <code>DUT_BDFS=</code> instantiates up to 8 endpoints via <code>tlp_cfg_fabric.sv</code>.</p>
       </div>
+    </section>
+
+    <section id="demo">
+      <h2>Live terminal · make dut</h2>
+      <p class="lead">~15&nbsp;s Asciinema capture: host CfgRd/CfgWr, DUT VendorID/DeviceID/BAR decode, Match gate <code>mis=0</code>.</p>
+      <img class="demo" src="assets/dut-terminal-demo.gif" alt="Animated terminal: make dut showing TLP and DUT config decode logs">
+      <p class="demo-note">Source cast: <a href="assets/dut-terminal-demo.cast">dut-terminal-demo.cast</a> · regenerate with <code>scripts/record_dut_gif.py</code></p>
+    </section>
+
+    <section id="demo-multi">
+      <h2>Live terminal · make dut-multi</h2>
+      <p class="lead">~18&nbsp;s Asciinema: two endpoints (<code>0100</code>/<code>0200</code>), distinct DeviceIDs <code>0x000c</code>/<code>0x000d</code>, interleaved BAR sizing, <code>mis=0</code>.</p>
+      <img class="demo" src="assets/dut-multi-terminal-demo.gif" alt="Animated terminal: make dut-multi two-BDF fabric">
+      <p class="demo-note">Source cast: <a href="assets/dut-multi-terminal-demo.cast">dut-multi-terminal-demo.cast</a> · regenerate with <code>scripts/record_dut_gif.py --mode multi</code></p>
     </section>
 
     <section id="beats">
@@ -495,7 +527,9 @@ make MAX_TLPS=8 && make wave</pre>
       <pre>make TRACE=/path/to/zephyr_ai_topology_trace.log MAX_TLPS=200</pre>
       <p class="pre-label" style="margin-top:18px">Endpoint DUT</p>
       <pre>make dut
-make TRACE=/path/to/pcie_trace.csv DUT_BDF=0100 MAX_TLPS=4000</pre>
+make dut-multi
+make TRACE=/path/to/pcie_trace.csv DUT_BDF=0100 MAX_TLPS=4000
+make TRACE=/path/to/pcie_trace.csv DUT_BDFS=0100,0200 MAX_TLPS=4000</pre>
       <div class="gate">
         <span class="gate-badge">mis=0 PASS</span>
         <p>Default sample: 26 TLPs from the golden fabric slice — CfgRd=25, CfgWr=1, complete=26. C and HDL counts must match. With <code>DUT_BDF</code>, also check <code>[DUT] cpl_tx</code>.</p>

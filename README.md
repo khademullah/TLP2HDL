@@ -20,6 +20,18 @@
   <a href="docs/architecture.html">Architecture</a>
 </p>
 
+<p align="center">
+  <img src="docs/assets/dut-terminal-demo.gif" alt="make dut — TLP and DUT config decode" width="720">
+</p>
+
+<p align="center"><em><code>make dut</code> — host TLPs, DUT VendorID/DeviceID/BAR decode, <code>mis=0</code></em></p>
+
+<p align="center">
+  <img src="docs/assets/dut-multi-terminal-demo.gif" alt="make dut-multi — two-BDF fabric" width="720">
+</p>
+
+<p align="center"><em><code>make dut-multi</code> — EPs <code>0100</code>/<code>0200</code>, DeviceID <code>0x000c</code>/<code>0x000d</code>, <code>mis=0</code></em></p>
+
 Replay QEMU `pci_cfg_*` logs or pcieshark CSV traces into a teaching AXI-Stream of TLP beats. A SystemVerilog header parser and Match tracker run beside the stream. The C DPI tally must agree (`mis=0`).
 
 Waveform pedagogy matches [L2AxisBr](https://khademullah.github.io/L2AxisBr/run.html): one clock is one column; a beat counts only when `tvalid && tready`; a TLP is `tstart` through `tlast`.
@@ -84,11 +96,12 @@ Default sample: `traces/golden_cfg_sample.log`. Stress: `traces/memrd_cpl_stress
 | `make stress` | MemRd↔Cpl out-of-order stress |
 | `make csv-gate` | Full pcieshark `pcie_trace.csv` |
 | `make dut` | Teaching endpoint DUT (cfg + Cpl) |
+| `make dut-multi` | Two-BDF fabric demo (`0100,0200`) |
 | `make dump-roundtrip` | Dump CSV → replay → gate |
 | `make wave` | GTKWave on `simulation_trace.vcd` |
 | `make clean` | Remove `obj_dir` and VCD |
 
-Plusargs / make vars: `TRACE=` `MAX_TLPS=` `TYPE=CfgRd,Cpl` `DIR=TX` `DUMP=out.csv` `DUT_BDF=0300`.
+Plusargs / make vars: `TRACE=` `MAX_TLPS=` `TYPE=CfgRd,Cpl` `DIR=TX` `DUMP=out.csv` `DUT_BDF=0300` `DUT_BDFS=0100,0200`.
 
 ### Endpoint DUT
 
@@ -96,8 +109,10 @@ Not a NIC/PHY — a **config-space slave** on the teaching AXIS. Host PAIR `CfgR
 
 ```bash
 make dut
+make dut-multi
 # or against a real capture slice:
-make TRACE=/home/khadem/pcieshark/pcie_trace.csv DUT_BDF=0e01 MAX_TLPS=4000
+make TRACE=/home/khadem/pcieshark/pcie_trace.csv DUT_BDF=0100 MAX_TLPS=4000
+make TRACE=/home/khadem/pcieshark/pcie_trace.csv DUT_BDFS=0100,0200 MAX_TLPS=4000
 ```
 
 ## Wave tips (L2AxisBr style)
@@ -121,8 +136,9 @@ hdl/tb_tlp_dpi.sv         Top + AXIS driver + gate
 hdl/tlp_header_parser.sv  Beat → header fields
 hdl/tlp_match_tracker.sv  complete / pair Match
 hdl/tlp_cfg_dut.sv        Teaching endpoint (cfg space + Cpl)
+hdl/tlp_cfg_fabric.sv     Multi-BDF wrapper (≤8 EPs)
 examples/                 Copy-paste make recipes
-traces/                   Sample QEMU logs / CSV / DUT
+traces/                   Sample QEMU logs / CSV / DUT / multi-DUT
 scripts/gen_tlp_csv.py    Log → CSV helper
 ```
 

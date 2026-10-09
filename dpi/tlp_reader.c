@@ -74,7 +74,10 @@ static char filt_dir[16];   /* "TX", "RX", or empty = all */
 static int  max_replay;     /* 0 = no cap; else truncate after load */
 static int  drop_cpl;       /* DUT mode: capture Cpls dropped; DUT emits them */
 static int  bdf_filter_en;
-static uint16_t bdf_filter; /* keep requests whose completer matches */
+static uint16_t bdf_filter; /* single-BDF compat */
+#define BDF_FILTER_MAX 16
+static uint16_t bdf_filters[BDF_FILTER_MAX];
+static int bdf_filter_n;
 
 static uint16_t parse_bdf(const char *s)
 {
@@ -198,8 +201,18 @@ static int push_tlp(tlp_rec_t *t)
         return 0; /* filtered out — not an error */
     if (drop_cpl && t->type == TLP_CPL)
         return 0;
-    if (bdf_filter_en && t->type != TLP_CPL && t->completer != bdf_filter)
-        return 0;
+    if (bdf_filter_en && t->type != TLP_CPL) {
+        int fi, ok = 0;
+        if (bdf_filter_n > 0) {
+            for (fi = 0; fi < bdf_filter_n; fi++)
+                if (t->completer == bdf_filters[fi])
+                    ok = 1;
+        } else if (t->completer == bdf_filter) {
+            ok = 1;
+        }
+        if (!ok)
+            return 0;
+    }
     if (tlp_count >= MAX_TLPS)
         return -1;
     tlps[tlp_count++] = *t;
@@ -332,10 +345,52 @@ void set_completer_filter(int bdf)
     if (bdf < 0) {
         bdf_filter_en = 0;
         bdf_filter = 0;
+        bdf_filter_n = 0;
     } else {
         bdf_filter_en = 1;
         bdf_filter = (uint16_t)bdf;
+        bdf_filter_n = 1;
+        bdf_filters[0] = (uint16_t)bdf;
     }
+}
+
+/* Comma/space-separated hex RIDs, e.g. "0100,0200,0300". */
+void set_completer_filters(const char *bdfs)
+{
+    char buf[256];
+    char *tok, *save = NULL;
+    bdf_filter_n = 0;
+    bdf_filter_en = 0;
+    bdf_filter = 0;
+    if (!bdfs || !*bdfs || strcmp(bdfs, "0") == 0)
+        return;
+    snprintf(buf, sizeof(buf), "%s", bdfs);
+    for (tok = strtok_r(buf, ",;|+/ \t", &save); tok; tok = strtok_r(NULL, ",;|+/ \t", &save)) {
+        unsigned long v;
+        char *end = NULL;
+        while (*tok && isspace((unsigned char)*tok)) tok++;
+        if (!*tok) continue;
+        v = strtoul(tok, &end, 16);
+        if (end == tok) continue;
+        if (bdf_filter_n >= BDF_FILTER_MAX) break;
+        bdf_filters[bdf_filter_n++] = (uint16_t)v;
+    }
+    if (bdf_filter_n > 0) {
+        bdf_filter_en = 1;
+        bdf_filter = bdf_filters[0];
+    }
+}
+
+int get_bdf_filter_count(void)
+{
+    return bdf_filter_n;
+}
+
+int get_bdf_filter(int idx)
+{
+    if (idx < 0 || idx >= bdf_filter_n)
+        return -1;
+    return (int)bdf_filters[idx];
 }
 
 int open_tlp_trace(const char *filename)
@@ -371,12 +426,22 @@ int open_tlp_trace(const char *filename)
 
     open_ok = 1;
     printf("[C-DPI] loaded %d TLPs from %s", tlp_count, filename);
-    if (filt_type[0] || filt_dir[0] || max_replay || drop_cpl || bdf_filter_en)
-        printf(" (filter type=%s dir=%s max=%d drop_cpl=%d bdf=%04x)",
+    if (filt_type[0] || filt_dir[0] || max_replay || drop_cpl || bdf_filter_en) {
+        printf(" (filter type=%s dir=%s max=%d drop_cpl=%d bdf=",
                filt_type[0] ? filt_type : "*",
                filt_dir[0] ? filt_dir : "*",
-               max_replay, drop_cpl,
-               bdf_filter_en ? bdf_filter : 0xffff);
+               max_replay, drop_cpl);
+        if (!bdf_filter_en)
+            printf("*");
+        else if (bdf_filter_n <= 1)
+            printf("%04x", bdf_filter);
+        else {
+            int fi;
+            for (fi = 0; fi < bdf_filter_n; fi++)
+                printf("%s%04x", fi ? "," : "", bdf_filters[fi]);
+        }
+        printf(")");
+    }
     printf("\n");
     printf("[C-DPI] CfgRd=%d CfgWr=%d MemRd=%d MemWr=%d Cpl=%d complete=%d pair=%d\n",
            c_cfgrd, c_cfgwr, c_memrd, c_memwr, c_cpl, c_complete, c_paired);
@@ -489,6 +554,7 @@ void close_tlp_trace(void)
     drop_cpl = 0;
     bdf_filter_en = 0;
     bdf_filter = 0;
+    bdf_filter_n = 0;
 }
 
 #ifdef __cplusplus

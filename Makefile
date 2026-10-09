@@ -11,7 +11,8 @@ SV_SOURCES = \
 	$(HDL_DIR)/tb_tlp_dpi.sv \
 	$(HDL_DIR)/tlp_header_parser.sv \
 	$(HDL_DIR)/tlp_match_tracker.sv \
-	$(HDL_DIR)/tlp_cfg_dut.sv
+	$(HDL_DIR)/tlp_cfg_dut.sv \
+	$(HDL_DIR)/tlp_cfg_fabric.sv
 
 C_SOURCES = $(DPI_DIR)/tlp_reader.c
 
@@ -24,6 +25,7 @@ TYPE     ?=
 DIR      ?=
 DUMP     ?=
 DUT_BDF  ?=
+DUT_BDFS ?=
 
 VERILATOR_FLAGS = --binary --timing --trace -j 0 --top-module $(TOP_MODULE) \
 	-Wno-INITIALDLY -Wno-WIDTHEXPAND
@@ -38,11 +40,13 @@ endif
 ifneq ($(strip $(DUMP)),)
 PLUSARGS += +DUMP="$(DUMP)"
 endif
-ifneq ($(strip $(DUT_BDF)),)
+ifneq ($(strip $(DUT_BDFS)),)
+PLUSARGS += +DUT_BDFS=$(DUT_BDFS)
+else ifneq ($(strip $(DUT_BDF)),)
 PLUSARGS += +DUT_BDF=$(DUT_BDF)
 endif
 
-.PHONY: all compile run wave clean gate stress dump-roundtrip csv-gate dut
+.PHONY: all compile run wave clean gate stress dump-roundtrip csv-gate dut dut-multi
 
 all: run
 
@@ -56,7 +60,7 @@ compile: $(SV_SOURCES) $(C_SOURCES)
 	@echo "$(C_SOURCES) $(SV_SOURCES)" > obj_dir/.src_w
 
 run: compile
-	@echo "[MAKE] TRACE=$(TRACE) MAX_TLPS=$(MAX_TLPS) TYPE=$(TYPE) DIR=$(DIR) DUMP=$(DUMP) DUT_BDF=$(DUT_BDF)"
+	@echo "[MAKE] TRACE=$(TRACE) MAX_TLPS=$(MAX_TLPS) TYPE=$(TYPE) DIR=$(DIR) DUMP=$(DUMP) DUT_BDF=$(DUT_BDF) DUT_BDFS=$(DUT_BDFS)"
 	./obj_dir/V$(TOP_MODULE) $(PLUSARGS) | tee $(LOG_FILE)
 
 gate: run
@@ -71,6 +75,10 @@ csv-gate:
 # Teaching endpoint DUT: drop capture Cpls, DUT answers PAIR CfgRd for one BDF
 dut:
 	$(MAKE) gate TRACE=traces/dut_ep_sample.csv MAX_TLPS=64 DUT_BDF=0300
+
+# Multi-BDF fabric demo: two endpoints (01:00.0 + 02:00.0), DeviceID 0x000c/0x000d
+dut-multi:
+	$(MAKE) gate TRACE=traces/dut_multi_sample.csv MAX_TLPS=64 DUT_BDFS=0100,0200
 
 dump-roundtrip: compile
 	@rm -f /tmp/tlp2hdl_roundtrip.csv

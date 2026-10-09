@@ -5,7 +5,10 @@
 - Teaching PCIe **endpoint DUT** (`tlp_cfg_dut.sv`): 256-byte cfg space, BAR sizing, Cpl on PAIR CfgRd
 - Type-0 header decode: Vendor/Device ID, Command (IO/Mem/BME), Class/Rev, BARs, CapPtr, Int — live wires + `[DUT] RD/WR/SEED` logs
 - Plusarg / make var `DUT_BDF=` — drop capture Cpls, filter to one completer, DUT closes Match
+- **Multi-BDF fabric** (`tlp_cfg_fabric.sv`, up to 8 EPs): `DUT_BDFS=0100,0200` — single-BDF `make dut` unchanged
 - `make dut` → `traces/dut_ep_sample.csv` + `DUT_BDF=0300` → `mis=0`
+- `make dut-multi` → `traces/dut_multi_sample.csv` + `DUT_BDFS=0100,0200` → `mis=0`
+- Terminal GIFs: `dut-terminal-demo.gif`, `dut-multi-terminal-demo.gif`
 
 ## 0.2.0 — 2026-10-07
 

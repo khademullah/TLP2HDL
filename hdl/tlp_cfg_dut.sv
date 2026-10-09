@@ -11,6 +11,7 @@ module tlp_cfg_dut (
     input  wire        rst_n,
     input  wire        enable,
     input  wire [15:0] dut_bdf,
+    input  wire [15:0] init_device_id, // 0 = default DEF_DEVICE
 
     input  wire        hdr_valid,
     input  wire        hdr_is_cfgrd,
@@ -124,7 +125,7 @@ module tlp_cfg_dut (
         if (!rst_n) begin
             for (i = 0; i < CFG_DWORDS; i = i + 1)
                 cfg[i] <= 32'd0;
-            cfg[0]      <= {DEF_DEVICE, DEF_VENDOR};
+            cfg[0]      <= {(init_device_id != 16'd0) ? init_device_id : DEF_DEVICE, DEF_VENDOR};
             cfg[1]      <= 32'h0010_0000;
             cfg[2]      <= 32'h0200_0000; // Network controller class
             cfg[3]      <= 32'h0000_0000;

@@ -148,7 +148,7 @@ make TRACE=/home/khadem/pcieshark/pcie_trace.csv TYPE=CfgRd,Cpl DIR=TX MAX_TLPS=
 make dump-roundtrip</pre>
 
     <h2 id="dut"><span class="num">07</span><br>Endpoint DUT</h2>
-    <p class="lead">Config-space slave on the teaching AXIS (not a NIC). PAIR CfgRd → DUT Cpl; COMPLETE CfgRd seeds the image.</p>
+    <p class="lead">Config-space slave on the teaching AXIS (not a NIC). PAIR CfgRd → DUT Cpl; COMPLETE CfgRd seeds the image. Animated demo: <a href="index.html#demo">make dut terminal GIF</a>.</p>
     <pre>cd /home/khadem/TLP2HDL
 make dut</pre>
     <div class="expect">[TLP] #1 Cpl … data=0x000c1b36  (DUT)
@@ -160,6 +160,11 @@ grep -E '\[DUT\]|\[GATE\]|\[SUM\]' simulation.log</pre>
     <div class="expect">[DUT] bdf=0100 hit_rd=8 hit_wr=25 cpl_tx=8 seed=29
 [GATE] mis=0  PASS</div>
     <p class="lead">All-complete BDF (e.g. <code>0e01</code>) only seeds and writes — <code>cpl_tx=0</code> is expected.</p>
+    <p class="lead">Multi-BDF fabric demo (animated: <a href="index.html#demo-multi">make dut-multi GIF</a>):</p>
+    <pre>make dut-multi
+# DUT_BDFS=0100,0200 · eps=2 · DeviceID 0x000c/0x000d · mis=0</pre>
+    <p class="lead">Or a real capture (up to 8 EPs):</p>
+    <pre>make TRACE=/home/khadem/pcieshark/pcie_trace.csv DUT_BDFS=0100,0200 MAX_TLPS=4000</pre>
 
     <h2><span class="num">08</span><br>Full Zephyr trace</h2>
     <p class="lead">Replay a full pcieshark Zephyr golden fabric capture.</p>

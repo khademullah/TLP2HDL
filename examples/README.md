@@ -129,6 +129,20 @@ make TRACE=/home/khadem/pcieshark/pcie_trace.csv DUT_BDF=0e01 MAX_TLPS=4000
 grep -E '\[DUT\]|\[GATE\]|\[SUM\]' simulation.log
 ```
 
+Multi-BDF fabric demo (two EPs, DeviceID `0x000c` / `0x000d`):
+
+```bash
+make dut-multi
+# expected: eps=2 hit_rd=10 cpl_tx=10 mis=0
+```
+
+Against a real capture (up to 8 EPs):
+
+```bash
+make TRACE=/home/khadem/pcieshark/pcie_trace.csv DUT_BDFS=0100,0200 MAX_TLPS=4000
+grep -E '\[DUT\]|\[GATE\]' simulation.log
+```
+
 Wave: host `CfgRd` (pair) then DUT `Cpl` with `data=` (VID/DID, BAR size mask, …).
 
 ---
