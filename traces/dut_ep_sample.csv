@@ -1,0 +1,11 @@
+timestamp_ns,direction,type,requester_id,completer_id,tag,length,addr,payload
+0,TX,CfgRd,00:00.0,03:00.0,1,4,0x0,
+1,TX,CfgRd,00:00.0,03:00.0,2,4,0x8,
+2,TX,CfgWr,00:00.0,03:00.0,0,4,0x4,00 00 10 00
+3,TX,CfgRd,00:00.0,03:00.0,3,4,0x4,
+4,TX,CfgWr,00:00.0,03:00.0,0,4,0x10,ff ff ff ff
+5,TX,CfgRd,00:00.0,03:00.0,4,4,0x10,
+6,TX,CfgWr,00:00.0,03:00.0,0,4,0x10,00 00 00 e0
+7,TX,CfgRd,00:00.0,03:00.0,5,4,0x10,
+8,TX,CfgWr,00:00.0,03:00.0,0,4,0x4,06 00 10 00
+9,TX,CfgRd,00:00.0,03:00.0,6,4,0x0,

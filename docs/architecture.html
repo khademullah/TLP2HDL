@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Architecture — TLP2HDL</title>
-  <meta name="description" content="TLP2HDL architecture: DPI-C reader, AXIS-TLP beat packing, header parser, Match tracker, C vs HDL scoreboard.">
+  <meta name="description" content="TLP2HDL architecture: DPI-C reader, AXIS-TLP beats, header parser, Match tracker, teaching cfg endpoint DUT, C vs HDL scoreboard.">
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -54,6 +54,7 @@
       <a class="brand" href="index.html"><img src="assets/logo-web.png" alt="">TLP2HDL</a>
       <div class="nav-links">
         <a href="index.html">Home</a>
+        <a href="index.html#dut">DUT</a>
         <a href="architecture.html">Architecture</a>
         <a href="run.html">Run book</a>
         <a href="https://github.com/khademullah/TLP2HDL">GitHub</a>
@@ -67,15 +68,19 @@
     │
     ▼
 dpi/tlp_reader.c     open · parse · pack 4 beats · C tallies
+                     (+ TYPE/DIR/BDF filter · drop Cpl in DUT mode)
     │
     ▼  DPI-C
 tb_tlp_dpi.sv        AXIS driver  tdata/tvalid/tready/tstart/tlast
     │
     ├──► tlp_header_parser.sv     hdr_* on last beat
+    ├──► tlp_cfg_dut.sv           cfg image · Cpl on PAIR (optional)
+    │         │
+    │         └──► AXIS Cpl beats (muxed back onto bus)
     └──► tlp_match_tracker.sv     complete / open / matched
     │
     ▼
-Scoreboard           HDL counters ≟ get_c_*()   →  mis=0
+Scoreboard           HDL counters ≟ get_c_*() / DUT cpl_tx   →  mis=0
     │
     ▼
 simulation_trace.vcd</div>
@@ -84,23 +89,40 @@ simulation_trace.vcd</div>
     <table>
       <thead><tr><th>File</th><th>Role</th></tr></thead>
       <tbody>
-        <tr><td class="mono">dpi/tlp_reader.c</td><td>Parse QEMU <code>pci_cfg_*</code> or CSV; emit beats; expose C tallies over DPI</td></tr>
-        <tr><td class="mono">hdl/tb_tlp_dpi.sv</td><td>Clock, reset, AXIS stimulus, VCD, end-of-run gate</td></tr>
+        <tr><td class="mono">dpi/tlp_reader.c</td><td>Parse QEMU <code>pci_cfg_*</code> or CSV; emit beats; filters; C tallies</td></tr>
+        <tr><td class="mono">hdl/tb_tlp_dpi.sv</td><td>Clock, AXIS stimulus, DUT drain mux, VCD, end-of-run gate</td></tr>
         <tr><td class="mono">hdl/tlp_header_parser.sv</td><td>Assemble header fields across four beats; pulse <code>hdr_valid</code></td></tr>
-        <tr><td class="mono">hdl/tlp_match_tracker.sv</td><td>Count CfgRd/CfgWr/Cpl; mark QEMU one-line complete; optional pair CAM</td></tr>
+        <tr><td class="mono">hdl/tlp_match_tracker.sv</td><td>complete / pair CAM; Cpl closes by tag</td></tr>
+        <tr><td class="mono">hdl/tlp_cfg_dut.sv</td><td>Teaching endpoint: 256-byte cfg, BAR sizing, Cpl on PAIR CfgRd</td></tr>
         <tr><td class="mono">scripts/gen_tlp_csv.py</td><td>Optional log → CSV for the CSV ingest path</td></tr>
       </tbody>
     </table>
+
+    <h2>Endpoint DUT</h2>
+    <p class="lead">Not a NIC or PHY — a <strong>config-space slave</strong> for one completer BDF.</p>
+    <table>
+      <thead><tr><th>Host TLP</th><th>DUT action</th></tr></thead>
+      <tbody>
+        <tr><td>CfgRd · pair (empty payload)</td><td>Emit teaching-AXIS Cpl with cfg DWORD</td></tr>
+        <tr><td>CfgRd · complete (payload)</td><td>Seed cfg image (<code>seed++</code>); no Cpl</td></tr>
+        <tr><td>CfgWr</td><td>Update Command / BARs (incl. <code>0xffffffff</code> size probe)</td></tr>
+      </tbody>
+    </table>
+    <div class="note">
+      With <code>+DUT_BDF=</code>, DPI drops capture Cpls and keeps only requests to that completer.
+      Match closes on DUT completions. Prefer a BDF with TX empty CfgRd (e.g. <code>0100</code> = <code>00:01.0</code>) to exercise <code>cpl_tx</code>.
+    </div>
 
     <h2>DPI surface</h2>
     <table>
       <thead><tr><th>Function</th><th>Meaning</th></tr></thead>
       <tbody>
         <tr><td class="mono">open_tlp_trace(path)</td><td>Load and classify TLPs</td></tr>
-        <tr><td class="mono">fetch_next_beat()</td><td>1 if another beat remains</td></tr>
-        <tr><td class="mono">get_beat_start/last()</td><td>AXIS <code>tstart</code> / <code>tlast</code></td></tr>
-        <tr><td class="mono">get_beat_data()</td><td>32-bit beat (advances index)</td></tr>
-        <tr><td class="mono">get_c_cfgrd/cfgwr/complete/cpl()</td><td>C-side scoreboard</td></tr>
+        <tr><td class="mono">set_type/dir_filter</td><td>Slice types / TX|RX</td></tr>
+        <tr><td class="mono">set_completer_filter / set_drop_cpl</td><td>DUT mode: one BDF, no capture Cpl</td></tr>
+        <tr><td class="mono">fetch_next_beat / get_beat_*</td><td>AXIS beat stream</td></tr>
+        <tr><td class="mono">get_c_cfgrd/cfgwr/complete/cpl/paired</td><td>C-side scoreboard</td></tr>
+        <tr><td class="mono">dump_tlp_csv(path)</td><td>Round-trip dump</td></tr>
       </tbody>
     </table>
 
@@ -109,31 +131,34 @@ simulation_trace.vcd</div>
       <thead><tr><th>Plusarg</th><th>Default</th><th>Meaning</th></tr></thead>
       <tbody>
         <tr><td class="mono">+TRACE=</td><td class="mono">traces/golden_cfg_sample.log</td><td>Input capture</td></tr>
-        <tr><td class="mono">+MAX_TLPS=</td><td class="mono">64</td><td>Cap streamed TLPs</td></tr>
+        <tr><td class="mono">+MAX_TLPS=</td><td class="mono">64</td><td>Cap loaded TLPs (C and HDL)</td></tr>
+        <tr><td class="mono">+TYPE=</td><td>—</td><td>e.g. <code>CfgRd,Cpl</code></td></tr>
+        <tr><td class="mono">+DIR=</td><td>—</td><td><code>TX</code> or <code>RX</code></td></tr>
+        <tr><td class="mono">+DUMP=</td><td>—</td><td>Write loaded TLPs as CSV</td></tr>
+        <tr><td class="mono">+DUT_BDF=</td><td>off</td><td>Hex RID, e.g. <code>0300</code> / <code>0100</code></td></tr>
       </tbody>
     </table>
-    <div class="note">Make wrappers: <code>make TRACE=… MAX_TLPS=…</code>. No Verilator rebuild when only plusargs change.</div>
+    <div class="note">Make wrappers: <code>make TRACE=… MAX_TLPS=… DUT_BDF=…</code>. No Verilator rebuild when only plusargs change.</div>
 
     <h2>Match semantics</h2>
     <p class="lead">Aligned with pcieshark:</p>
     <table>
       <thead><tr><th>Hint / event</th><th>Meaning</th></tr></thead>
       <tbody>
-        <tr><td class="mono">match_hint = 1</td><td>QEMU one-line cfg access → <code>complete</code></td></tr>
-        <tr><td>MemRd without complete</td><td>Opens a tag/requester slot</td></tr>
-        <tr><td>Cpl</td><td>Closes a matching slot → matched; else unmatched</td></tr>
-        <tr><td>CfgWr</td><td>No completion pair expected</td></tr>
+        <tr><td class="mono">match_hint = 1</td><td>Request with payload → <code>complete</code></td></tr>
+        <tr><td class="mono">match_hint = 2</td><td>Request without payload → <code>pair</code> (open slot)</td></tr>
+        <tr><td>Cpl</td><td>Closes by tag → matched; else unmatched</td></tr>
+        <tr><td>DUT Cpl</td><td>Same Cpl path; closes PAIR opened by host CfgRd</td></tr>
       </tbody>
     </table>
 
     <h2>What this is not</h2>
     <div class="note">
-      Not a PCIe PHY, PIPE, or commercial VIP. The AXIS-TLP bus is a <strong>teaching and bring-up</strong> abstraction so TLPs can be observed like AXIS bytes in L2AxisBr and gated like packets in Pcap2HDL.
+      Not a PCIe PHY, PIPE, or commercial VIP. The AXIS-TLP bus and cfg DUT are <strong>teaching and bring-up</strong> abstractions so TLPs can be observed like AXIS bytes in L2AxisBr and gated like packets in Pcap2HDL.
     </div>
 
-    <pre>make gate
-# [SUM] HDL  CfgRd=25 CfgWr=1 … complete=26
-# [SUM] C    CfgRd=25 CfgWr=1 … complete=26
+    <pre>make dut
+# [DUT] bdf=0300 hit_rd=6 hit_wr=4 cpl_tx=6 seed=0
 # [GATE] mis=0  PASS</pre>
 
     <footer>

@@ -83,11 +83,22 @@ Default sample: `traces/golden_cfg_sample.log`. Stress: `traces/memrd_cpl_stress
 | `make gate` | Fail unless `mis=0` |
 | `make stress` | MemRd↔Cpl out-of-order stress |
 | `make csv-gate` | Full pcieshark `pcie_trace.csv` |
+| `make dut` | Teaching endpoint DUT (cfg + Cpl) |
 | `make dump-roundtrip` | Dump CSV → replay → gate |
 | `make wave` | GTKWave on `simulation_trace.vcd` |
 | `make clean` | Remove `obj_dir` and VCD |
 
-Plusargs / make vars: `TRACE=` `MAX_TLPS=` `TYPE=CfgRd,Cpl` `DIR=TX` `DUMP=out.csv`.
+Plusargs / make vars: `TRACE=` `MAX_TLPS=` `TYPE=CfgRd,Cpl` `DIR=TX` `DUMP=out.csv` `DUT_BDF=0300`.
+
+### Endpoint DUT
+
+Not a NIC/PHY — a **config-space slave** on the teaching AXIS. Host PAIR `CfgRd` to `DUT_BDF` → DUT emits `Cpl`; `CfgWr` updates the image (including BAR `0xffffffff` sizing). Capture Cpls are dropped so Match closes on DUT completions.
+
+```bash
+make dut
+# or against a real capture slice:
+make TRACE=/home/khadem/pcieshark/pcie_trace.csv DUT_BDF=0e01 MAX_TLPS=4000
+```
 
 ## Wave tips (L2AxisBr style)
 
@@ -109,8 +120,9 @@ dpi/tlp_reader.c          DPI-C parse + beat emit + C tallies
 hdl/tb_tlp_dpi.sv         Top + AXIS driver + gate
 hdl/tlp_header_parser.sv  Beat → header fields
 hdl/tlp_match_tracker.sv  complete / pair Match
+hdl/tlp_cfg_dut.sv        Teaching endpoint (cfg space + Cpl)
 examples/                 Copy-paste make recipes
-traces/                   Sample QEMU logs / CSV
+traces/                   Sample QEMU logs / CSV / DUT
 scripts/gen_tlp_csv.py    Log → CSV helper
 ```
 
@@ -128,8 +140,8 @@ Colors match the family: navy `#182028`, cyan `#00b0d0`, gold `#e0b018`.
 ## Roadmap
 
 - **v0.1** — QEMU/CSV replay, AXIS-TLP, Match gate, VCD, examples, logo
-- **v0.2** (this tree) — pcieshark CfgRd↔Cpl Match, MemRd stress, TYPE/DIR filter, CSV dump round-trip
-- **v0.3** — Golden fabric HDL + pcieshark GUI “Wave” pane link
+- **v0.2** — pcieshark CfgRd↔Cpl Match, MemRd stress, TYPE/DIR filter, CSV dump, **cfg endpoint DUT**
+- **v0.3** — Golden fabric / multi-BDF + pcieshark GUI “Wave” pane link
 
 Related: [pcieshark](https://github.com/khademullah/pcieshark) · [Pcap2HDL](https://github.com/khademullah/Pcap2HDL) · [L2AxisBr](https://github.com/khademullah/L2AxisBr)
 

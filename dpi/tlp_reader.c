@@ -72,6 +72,9 @@ static int c_paired; /* requests marked MATCH_PAIR */
 static char filt_type[128]; /* e.g. "CfgRd,Cpl" or empty = all */
 static char filt_dir[16];   /* "TX", "RX", or empty = all */
 static int  max_replay;     /* 0 = no cap; else truncate after load */
+static int  drop_cpl;       /* DUT mode: capture Cpls dropped; DUT emits them */
+static int  bdf_filter_en;
+static uint16_t bdf_filter; /* keep requests whose completer matches */
 
 static uint16_t parse_bdf(const char *s)
 {
@@ -193,6 +196,10 @@ static int push_tlp(tlp_rec_t *t)
 {
     if (!type_allowed(t->type) || !dir_allowed(t->dir))
         return 0; /* filtered out — not an error */
+    if (drop_cpl && t->type == TLP_CPL)
+        return 0;
+    if (bdf_filter_en && t->type != TLP_CPL && t->completer != bdf_filter)
+        return 0;
     if (tlp_count >= MAX_TLPS)
         return -1;
     tlps[tlp_count++] = *t;
@@ -314,6 +321,23 @@ void set_max_replay(int n)
     max_replay = (n > 0) ? n : 0;
 }
 
+void set_drop_cpl(int en)
+{
+    drop_cpl = en ? 1 : 0;
+}
+
+/* bdf < 0 disables; else keep only requests to this completer BDF. */
+void set_completer_filter(int bdf)
+{
+    if (bdf < 0) {
+        bdf_filter_en = 0;
+        bdf_filter = 0;
+    } else {
+        bdf_filter_en = 1;
+        bdf_filter = (uint16_t)bdf;
+    }
+}
+
 int open_tlp_trace(const char *filename)
 {
     FILE *fp;
@@ -347,11 +371,12 @@ int open_tlp_trace(const char *filename)
 
     open_ok = 1;
     printf("[C-DPI] loaded %d TLPs from %s", tlp_count, filename);
-    if (filt_type[0] || filt_dir[0] || max_replay)
-        printf(" (filter type=%s dir=%s max=%d)",
+    if (filt_type[0] || filt_dir[0] || max_replay || drop_cpl || bdf_filter_en)
+        printf(" (filter type=%s dir=%s max=%d drop_cpl=%d bdf=%04x)",
                filt_type[0] ? filt_type : "*",
                filt_dir[0] ? filt_dir : "*",
-               max_replay);
+               max_replay, drop_cpl,
+               bdf_filter_en ? bdf_filter : 0xffff);
     printf("\n");
     printf("[C-DPI] CfgRd=%d CfgWr=%d MemRd=%d MemWr=%d Cpl=%d complete=%d pair=%d\n",
            c_cfgrd, c_cfgwr, c_memrd, c_memwr, c_cpl, c_complete, c_paired);
@@ -461,6 +486,9 @@ void close_tlp_trace(void)
     tlp_count = tlp_idx = beat_idx = 0;
     filt_type[0] = filt_dir[0] = '\0';
     max_replay = 0;
+    drop_cpl = 0;
+    bdf_filter_en = 0;
+    bdf_filter = 0;
 }
 
 #ifdef __cplusplus

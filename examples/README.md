@@ -112,7 +112,28 @@ make TRACE=/tmp/tlp2hdl_roundtrip.csv gate
 
 ---
 
-## 07 — Full Zephyr trace
+## 07 — Endpoint DUT
+
+Teaching PCIe **endpoint** (cfg space), not a NIC. Drops capture Cpls; DUT answers PAIR `CfgRd`.
+
+```bash
+cd /home/khadem/TLP2HDL
+make dut
+# expected: DUT cpl_tx=6 matched=6 mis=0
+```
+
+Against a fabric capture (one BDF):
+
+```bash
+make TRACE=/home/khadem/pcieshark/pcie_trace.csv DUT_BDF=0e01 MAX_TLPS=4000
+grep -E '\[DUT\]|\[GATE\]|\[SUM\]' simulation.log
+```
+
+Wave: host `CfgRd` (pair) then DUT `Cpl` with `data=` (VID/DID, BAR size mask, …).
+
+---
+
+## 08 — Full Zephyr trace
 
 ```bash
 cd /home/khadem/TLP2HDL
@@ -122,7 +143,7 @@ grep -E '\[GATE\]|\[SUM\]|\[C-DPI\]' simulation.log
 
 ---
 
-## 08 — Short wave walk
+## 09 — Short wave walk
 
 ```bash
 cd /home/khadem/TLP2HDL

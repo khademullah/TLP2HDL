@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 — 2026-10-09
+
+- Teaching PCIe **endpoint DUT** (`tlp_cfg_dut.sv`): 256-byte cfg space, BAR sizing, Cpl on PAIR CfgRd
+- Plusarg / make var `DUT_BDF=` — drop capture Cpls, filter to one completer, DUT closes Match
+- `make dut` → `traces/dut_ep_sample.csv` + `DUT_BDF=0300` → `mis=0`
+
 ## 0.2.0 — 2026-10-07
 
 - Match mirrors pcieshark: request with payload → `complete`; empty → `pair`; `Cpl` closes by tag

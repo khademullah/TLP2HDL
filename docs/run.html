@@ -92,8 +92,10 @@
       <a class="brand" href="index.html"><img src="assets/logo-web.png" alt="">TLP2HDL</a>
       <div class="nav-links">
         <a href="index.html">Home</a>
+        <a href="index.html#dut">DUT</a>
         <a href="architecture.html">Architecture</a>
         <a href="run.html">Run book</a>
+        <a href="#dut">DUT recipes</a>
         <a href="#wave">Wave tips</a>
         <a href="https://github.com/khademullah/TLP2HDL">GitHub</a>
       </div>
@@ -145,13 +147,27 @@ make TRACE=/home/khadem/pcieshark/pcie_trace.csv TYPE=CfgRd,Cpl DIR=TX MAX_TLPS=
     <pre>cd /home/khadem/TLP2HDL
 make dump-roundtrip</pre>
 
-    <h2><span class="num">07</span><br>Full Zephyr trace</h2>
+    <h2 id="dut"><span class="num">07</span><br>Endpoint DUT</h2>
+    <p class="lead">Config-space slave on the teaching AXIS (not a NIC). PAIR CfgRd → DUT Cpl; COMPLETE CfgRd seeds the image.</p>
+    <pre>cd /home/khadem/TLP2HDL
+make dut</pre>
+    <div class="expect">[TLP] #1 Cpl … data=0x000c1b36  (DUT)
+[DUT] bdf=0300 hit_rd=6 hit_wr=4 cpl_tx=6 seed=0
+[GATE] mis=0  PASS</div>
+    <p class="lead">Real capture — use a BDF with TX empty CfgRd (PAIR), e.g. <code>0100</code> = <code>00:01.0</code>:</p>
+    <pre>make TRACE=/home/khadem/pcieshark/pcie_trace.csv DUT_BDF=0100 MAX_TLPS=4000
+grep -E '\[DUT\]|\[GATE\]|\[SUM\]' simulation.log</pre>
+    <div class="expect">[DUT] bdf=0100 hit_rd=8 hit_wr=25 cpl_tx=8 seed=29
+[GATE] mis=0  PASS</div>
+    <p class="lead">All-complete BDF (e.g. <code>0e01</code>) only seeds and writes — <code>cpl_tx=0</code> is expected.</p>
+
+    <h2><span class="num">08</span><br>Full Zephyr trace</h2>
     <p class="lead">Replay a full pcieshark Zephyr golden fabric capture.</p>
     <pre>cd /home/khadem/TLP2HDL
 make TRACE=/home/khadem/pcieshark/zephyr_ai_topology_trace.log MAX_TLPS=200
 grep -E '\[GATE\]|\[SUM\]|\[C-DPI\]' simulation.log</pre>
 
-    <h2><span class="num">08</span><br>Short wave walk</h2>
+    <h2><span class="num">09</span><br>Short wave walk</h2>
     <p class="lead">Eight TLPs for beat-by-beat reading.</p>
     <pre>cd /home/khadem/TLP2HDL
 make MAX_TLPS=8

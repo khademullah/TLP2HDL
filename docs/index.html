@@ -343,6 +343,7 @@
       </a>
       <div class="nav-links">
         <a href="#path">Path</a>
+        <a href="#dut">DUT</a>
         <a href="#beats">Beats</a>
         <a href="#start">Start</a>
         <a href="#wave">Wave</a>
@@ -355,9 +356,9 @@
     <header class="hero">
       <img class="hero-mark" src="assets/logo.png" alt="TLP2HDL logo">
       <div>
-        <p class="eyebrow">Release 0.2.0 · AGPL-3.0-only · Verilator 5.032+</p>
+        <p class="eyebrow">Release 0.2.1 · AGPL-3.0-only · Verilator 5.032+</p>
         <h1>TLP2HDL</h1>
-        <p class="tag">PCIe Transaction Layer Packets to cycle-accurate HDL. Replay pcieshark and QEMU traces into Verilator, watch teaching AXIS beats on a wave, and gate Match in C and SystemVerilog.</p>
+        <p class="tag">PCIe Transaction Layer Packets to cycle-accurate HDL. Replay pcieshark and QEMU traces into Verilator, watch teaching AXIS beats on a wave, gate Match in C and SystemVerilog, and optionally drive a teaching config-space endpoint DUT.</p>
         <div class="actions">
           <a class="btn btn-cyan" href="https://github.com/khademullah/TLP2HDL">View on GitHub</a>
           <a class="btn btn-gold" href="run.html">Run book</a>
@@ -412,21 +413,55 @@
           <h3>Waveform VCD</h3>
           <p>GTKWave dump with L2AxisBr-style reading: one clock, both pins high, frame span.</p>
         </article>
+        <article>
+          <h3>Endpoint DUT</h3>
+          <p>Config-space slave on the teaching AXIS. PAIR CfgRd → DUT Cpl; CfgWr updates BARs. Not a NIC/PHY.</p>
+        </article>
       </div>
     </section>
 
     <section id="path">
       <h2>Data path</h2>
-      <p class="lead">Observers sit beside the stream — parse and Match do not sit in a FIFO after a NIC.</p>
+      <p class="lead">Observers sit beside the stream. With <code>DUT_BDF=</code>, the endpoint answers PAIR reads so Match closes on DUT completions.</p>
       <div class="pipeline">
         <ol>
           <li><strong>Trace</strong>QEMU log or CSV from pcieshark</li>
           <li><strong>DPI-C</strong><code>tlp_reader.c</code> packs beats</li>
           <li><strong>AXIS</strong><code>tdata</code> · <code>tvalid</code> · <code>tready</code></li>
           <li><strong>Parser</strong>Header fields on <code>hdr_valid</code></li>
+          <li><strong>DUT</strong>Cfg image · Cpl on PAIR</li>
           <li><strong>Match</strong>complete / pair / open</li>
           <li><strong>Gate</strong>C tally vs HDL · <code>mis=0</code></li>
         </ol>
+      </div>
+    </section>
+
+    <section id="dut">
+      <h2>Endpoint DUT</h2>
+      <p class="lead">A teaching PCIe <strong>config-space endpoint</strong> — not a NIC. Host traffic for one BDF hits a 256-byte cfg image; empty (PAIR) CfgRd gets a real Cpl back on the same AXIS.</p>
+      <div class="grid">
+        <article>
+          <h3>When DUT emits Cpl</h3>
+          <p>TX CfgRd with <strong>empty payload</strong> → <code>pair</code>. DUT returns VID/DID, Command, BAR size mask, programmed BAR.</p>
+        </article>
+        <article>
+          <h3>When DUT seeds</h3>
+          <p>RX CfgRd with payload → <code>complete</code>. Image absorbs capture data (<code>seed</code>); no Cpl needed.</p>
+        </article>
+        <article>
+          <h3>BAR sizing</h3>
+          <p>CfgWr <code>0xffffffff</code> to a BAR → next PAIR read returns the size mask (e.g. <code>0xfffff000</code>).</p>
+        </article>
+      </div>
+      <p class="pre-label" style="margin-top:22px">Demo sample (PAIR path)</p>
+      <pre>make dut
+# DUT_BDF=0300 · hit_rd=6 cpl_tx=6 · mis=0</pre>
+      <p class="pre-label" style="margin-top:18px">Real pcieshark capture (PAIR + seed)</p>
+      <pre>make TRACE=/path/to/pcie_trace.csv DUT_BDF=0100 MAX_TLPS=4000
+# 0100 = 00:01.0 · cpl_tx=8 seed=29 · mis=0</pre>
+      <div class="gate">
+        <span class="gate-badge">DUT · mis=0</span>
+        <p>Capture Cpls are dropped for that BDF. Match closes on DUT completions. Use a BDF with TX empty CfgRd to see <code>cpl_tx</code>; all-complete BDF (e.g. <code>0e01</code>) only seeds and writes.</p>
       </div>
     </section>
 
@@ -458,9 +493,12 @@ make gate
 make MAX_TLPS=8 && make wave</pre>
       <p class="pre-label" style="margin-top:18px">Full pcieshark Zephyr golden capture</p>
       <pre>make TRACE=/path/to/zephyr_ai_topology_trace.log MAX_TLPS=200</pre>
+      <p class="pre-label" style="margin-top:18px">Endpoint DUT</p>
+      <pre>make dut
+make TRACE=/path/to/pcie_trace.csv DUT_BDF=0100 MAX_TLPS=4000</pre>
       <div class="gate">
         <span class="gate-badge">mis=0 PASS</span>
-        <p>Default sample: 26 TLPs from the golden fabric slice — CfgRd=25, CfgWr=1, complete=26. C and HDL counts must match.</p>
+        <p>Default sample: 26 TLPs from the golden fabric slice — CfgRd=25, CfgWr=1, complete=26. C and HDL counts must match. With <code>DUT_BDF</code>, also check <code>[DUT] cpl_tx</code>.</p>
       </div>
     </section>
 
@@ -521,14 +559,14 @@ make MAX_TLPS=8 && make wave</pre>
         </thead>
         <tbody>
           <tr><td class="mono">0.1</td><td>QEMU/CSV replay, AXIS-TLP, Match gate, VCD, site</td></tr>
-          <tr><td class="mono">0.2</td><td>pcieshark CfgRd↔Cpl Match, MemRd stress, TYPE/DIR filter, CSV dump</td></tr>
-          <tr><td class="mono">0.3</td><td>Golden fabric HDL + pcieshark Wave pane link</td></tr>
+          <tr><td class="mono">0.2</td><td>Match, filters, CSV dump, teaching cfg endpoint DUT</td></tr>
+          <tr><td class="mono">0.3</td><td>Multi-BDF fabric + pcieshark Wave pane link</td></tr>
         </tbody>
       </table>
     </section>
 
     <footer>
-      <span><a href="https://github.com/khademullah/TLP2HDL/blob/main/LICENSE">AGPL-3.0-only</a> · <a href="https://github.com/khademullah/TLP2HDL">khademullah/TLP2HDL</a> · 0.2.0</span>
+      <span><a href="https://github.com/khademullah/TLP2HDL/blob/main/LICENSE">AGPL-3.0-only</a> · <a href="https://github.com/khademullah/TLP2HDL">khademullah/TLP2HDL</a> · 0.2.1</span>
       <span>Teaching AXIS bus — not a full PCIe PHY or VIP.</span>
     </footer>
   </div>

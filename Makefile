@@ -10,7 +10,8 @@ DPI_DIR = dpi
 SV_SOURCES = \
 	$(HDL_DIR)/tb_tlp_dpi.sv \
 	$(HDL_DIR)/tlp_header_parser.sv \
-	$(HDL_DIR)/tlp_match_tracker.sv
+	$(HDL_DIR)/tlp_match_tracker.sv \
+	$(HDL_DIR)/tlp_cfg_dut.sv
 
 C_SOURCES = $(DPI_DIR)/tlp_reader.c
 
@@ -22,9 +23,10 @@ MAX_TLPS ?= 64
 TYPE     ?=
 DIR      ?=
 DUMP     ?=
+DUT_BDF  ?=
 
 VERILATOR_FLAGS = --binary --timing --trace -j 0 --top-module $(TOP_MODULE) \
-	-Wno-INITIALDLY
+	-Wno-INITIALDLY -Wno-WIDTHEXPAND
 
 PLUSARGS = +TRACE="$(TRACE)" +MAX_TLPS=$(MAX_TLPS)
 ifneq ($(strip $(TYPE)),)
@@ -36,8 +38,11 @@ endif
 ifneq ($(strip $(DUMP)),)
 PLUSARGS += +DUMP="$(DUMP)"
 endif
+ifneq ($(strip $(DUT_BDF)),)
+PLUSARGS += +DUT_BDF=$(DUT_BDF)
+endif
 
-.PHONY: all compile run wave clean gate stress dump-roundtrip csv-gate
+.PHONY: all compile run wave clean gate stress dump-roundtrip csv-gate dut
 
 all: run
 
@@ -51,7 +56,7 @@ compile: $(SV_SOURCES) $(C_SOURCES)
 	@echo "$(C_SOURCES) $(SV_SOURCES)" > obj_dir/.src_w
 
 run: compile
-	@echo "[MAKE] TRACE=$(TRACE) MAX_TLPS=$(MAX_TLPS) TYPE=$(TYPE) DIR=$(DIR) DUMP=$(DUMP)"
+	@echo "[MAKE] TRACE=$(TRACE) MAX_TLPS=$(MAX_TLPS) TYPE=$(TYPE) DIR=$(DIR) DUMP=$(DUMP) DUT_BDF=$(DUT_BDF)"
 	./obj_dir/V$(TOP_MODULE) $(PLUSARGS) | tee $(LOG_FILE)
 
 gate: run
@@ -62,6 +67,10 @@ stress:
 
 csv-gate:
 	$(MAKE) gate TRACE=/home/khadem/pcieshark/pcie_trace.csv MAX_TLPS=4000
+
+# Teaching endpoint DUT: drop capture Cpls, DUT answers PAIR CfgRd for one BDF
+dut:
+	$(MAKE) gate TRACE=traces/dut_ep_sample.csv MAX_TLPS=64 DUT_BDF=0300
 
 dump-roundtrip: compile
 	@rm -f /tmp/tlp2hdl_roundtrip.csv
