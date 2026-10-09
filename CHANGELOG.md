@@ -3,6 +3,7 @@
 ## 0.2.1 — 2026-10-09
 
 - Teaching PCIe **endpoint DUT** (`tlp_cfg_dut.sv`): 256-byte cfg space, BAR sizing, Cpl on PAIR CfgRd
+- Type-0 header decode: Vendor/Device ID, Command (IO/Mem/BME), Class/Rev, BARs, CapPtr, Int — live wires + `[DUT] RD/WR/SEED` logs
 - Plusarg / make var `DUT_BDF=` — drop capture Cpls, filter to one completer, DUT closes Match
 - `make dut` → `traces/dut_ep_sample.csv` + `DUT_BDF=0300` → `mis=0`
 

@@ -67,6 +67,25 @@ module tb_tlp_dpi;
     wire [31:0] dut_hit_wr;
     wire [31:0] dut_cpl_tx;
     wire [31:0] dut_seed;
+    wire [15:0] dut_vendor_id;
+    wire [15:0] dut_device_id;
+    wire [15:0] dut_command;
+    wire [15:0] dut_status;
+    wire [7:0]  dut_revision_id;
+    wire [7:0]  dut_prog_if;
+    wire [7:0]  dut_subclass;
+    wire [7:0]  dut_class_code;
+    wire [7:0]  dut_header_type;
+    wire [31:0] dut_bar0;
+    wire [31:0] dut_bar1;
+    wire [15:0] dut_subsys_ven;
+    wire [15:0] dut_subsys_id;
+    wire [7:0]  dut_cap_ptr;
+    wire [7:0]  dut_int_line;
+    wire [7:0]  dut_int_pin;
+    wire        dut_cmd_io;
+    wire        dut_cmd_mem;
+    wire        dut_cmd_bme;
 
     integer max_tlps;
     integer beat_count;
@@ -151,15 +170,99 @@ module tb_tlp_dpi;
         .cnt_hit_rd(dut_hit_rd),
         .cnt_hit_wr(dut_hit_wr),
         .cnt_cpl_tx(dut_cpl_tx),
-        .cnt_seed(dut_seed)
+        .cnt_seed(dut_seed),
+        .vendor_id(dut_vendor_id),
+        .device_id(dut_device_id),
+        .command(dut_command),
+        .status(dut_status),
+        .revision_id(dut_revision_id),
+        .prog_if(dut_prog_if),
+        .subclass(dut_subclass),
+        .class_code(dut_class_code),
+        .header_type(dut_header_type),
+        .bar0(dut_bar0),
+        .bar1(dut_bar1),
+        .subsystem_vendor_id(dut_subsys_ven),
+        .subsystem_id(dut_subsys_id),
+        .capabilities_ptr(dut_cap_ptr),
+        .interrupt_line(dut_int_line),
+        .interrupt_pin(dut_int_pin),
+        .cmd_io_space(dut_cmd_io),
+        .cmd_mem_space(dut_cmd_mem),
+        .cmd_bus_master(dut_cmd_bme)
     );
 
     initial clk = 1'b0;
     always #5 clk = ~clk;
 
+    function automatic string cfg_reg_name(input [7:0] off);
+        case (off)
+            8'h00: cfg_reg_name = "VendorID/DeviceID";
+            8'h04: cfg_reg_name = "Command/Status";
+            8'h08: cfg_reg_name = "ClassCode/Revision";
+            8'h0c: cfg_reg_name = "BIST/Header/Lat/Cache";
+            8'h10: cfg_reg_name = "BAR0";
+            8'h14: cfg_reg_name = "BAR1";
+            8'h18: cfg_reg_name = "BAR2";
+            8'h1c: cfg_reg_name = "BAR3";
+            8'h20: cfg_reg_name = "BAR4";
+            8'h24: cfg_reg_name = "BAR5";
+            8'h2c: cfg_reg_name = "SubsystemID";
+            8'h30: cfg_reg_name = "ExpROM";
+            8'h34: cfg_reg_name = "CapabilitiesPtr";
+            8'h3c: cfg_reg_name = "IntLine/IntPin";
+            default: cfg_reg_name = "CfgDWORD";
+        endcase
+    endfunction
+
+    function automatic string decode_cfg_dword(input [7:0] off, input [31:0] data);
+        string s;
+        case (off)
+            8'h00: $sformat(s, "VendorID=0x%04h DeviceID=0x%04h", data[15:0], data[31:16]);
+            8'h04: $sformat(s, "Command=0x%04h (IO=%0d Mem=%0d BME=%0d) Status=0x%04h",
+                            data[15:0], data[0], data[1], data[2], data[31:16]);
+            8'h08: $sformat(s, "Class=0x%02h Sub=0x%02h ProgIF=0x%02h Rev=0x%02h",
+                            data[31:24], data[23:16], data[15:8], data[7:0]);
+            8'h10, 8'h14, 8'h18, 8'h1c, 8'h20, 8'h24:
+                if (data == 32'hffff_ffff)
+                    $sformat(s, "%s size-probe", cfg_reg_name(off));
+                else if (data[0])
+                    $sformat(s, "%s=0x%08h (IO)", cfg_reg_name(off), data);
+                else if (data[2] && data[3])
+                    $sformat(s, "%s=0x%08h (Mem 64-bit pref)", cfg_reg_name(off), data);
+                else if (data[2])
+                    $sformat(s, "%s=0x%08h (Mem 64-bit)", cfg_reg_name(off), data);
+                else if (data[3])
+                    $sformat(s, "%s=0x%08h (Mem 32-bit pref)", cfg_reg_name(off), data);
+                else
+                    $sformat(s, "%s=0x%08h (Mem 32-bit)", cfg_reg_name(off), data);
+            8'h2c: $sformat(s, "SubVendor=0x%04h Subsystem=0x%04h", data[15:0], data[31:16]);
+            8'h34: $sformat(s, "CapPtr=0x%02h", data[7:0]);
+            8'h3c: $sformat(s, "IntLine=%0d IntPin=%0d", data[7:0], data[15:8]);
+            default: $sformat(s, "%s=0x%08h", cfg_reg_name(off), data);
+        endcase
+        return s;
+    endfunction
+
+    // Value the DUT image holds / will return for this offset (before WR/SEED update)
+    function automatic [31:0] dut_image_dword(input [7:0] off);
+        case (off)
+            8'h00: dut_image_dword = {dut_device_id, dut_vendor_id};
+            8'h04: dut_image_dword = {dut_status, dut_command};
+            8'h08: dut_image_dword = {dut_class_code, dut_subclass, dut_prog_if, dut_revision_id};
+            8'h10: dut_image_dword = dut_bar0;
+            8'h14: dut_image_dword = dut_bar1;
+            8'h2c: dut_image_dword = {dut_subsys_id, dut_subsys_ven};
+            8'h34: dut_image_dword = {24'd0, dut_cap_ptr};
+            8'h3c: dut_image_dword = {16'd0, dut_int_pin, dut_int_line};
+            default: dut_image_dword = 32'd0;
+        endcase
+    endfunction
+
     always @(posedge clk) begin
         if (rst_n && hdr_valid) begin
             tlp_seen <= tlp_seen + 1;
+            // Host / bus TLP first, then DUT decode (causal log order)
             if (hdr_is_cfgrd)
                 $display("[TLP] #%0d CfgRd  cpl=%04h addr=0x%0h data=0x%08h complete=%0d pair=%0d",
                          tlp_seen, hdr_completer, hdr_addr, hdr_payload, hdr_is_complete, hdr_is_pair);
@@ -176,6 +279,18 @@ module tb_tlp_dpi;
             else
                 $display("[TLP] #%0d type=0x%02h addr=0x%0h",
                          tlp_seen, hdr_type, hdr_addr);
+
+            if (dut_enable && (hdr_completer == dut_bdf)) begin
+                if (hdr_is_cfgwr)
+                    $display("[DUT] WR   @0x%02h  %s", hdr_addr[7:0],
+                             decode_cfg_dword(hdr_addr[7:0], hdr_payload));
+                else if (hdr_is_cfgrd && hdr_is_complete)
+                    $display("[DUT] SEED @0x%02h  %s", hdr_addr[7:0],
+                             decode_cfg_dword(hdr_addr[7:0], hdr_payload));
+                else if (hdr_is_cfgrd && hdr_is_pair)
+                    $display("[DUT] RD   @0x%02h  %s", hdr_addr[7:0],
+                             decode_cfg_dword(hdr_addr[7:0], dut_image_dword(hdr_addr[7:0])));
+            end
         end
     end
 
@@ -290,9 +405,18 @@ module tb_tlp_dpi;
                  cnt_cfgrd, cnt_cfgwr, cnt_cpl, cnt_complete, cnt_open, cnt_matched, cnt_unmatched);
         $display("[SUM] C    CfgRd=%0d CfgWr=%0d Cpl=%0d complete=%0d pair=%0d",
                  get_c_cfgrd(), get_c_cfgwr(), get_c_cpl(), get_c_complete(), get_c_paired());
-        if (dut_enable)
+        if (dut_enable) begin
             $display("[DUT] bdf=%04h hit_rd=%0d hit_wr=%0d cpl_tx=%0d seed=%0d",
                      dut_bdf, dut_hit_rd, dut_hit_wr, dut_cpl_tx, dut_seed);
+            $display("[DUT] VendorID=0x%04h DeviceID=0x%04h Class=0x%02h:%02h:%02h Rev=0x%02h",
+                     dut_vendor_id, dut_device_id, dut_class_code, dut_subclass,
+                     dut_prog_if, dut_revision_id);
+            $display("[DUT] Command=0x%04h (IO=%0d Mem=%0d BME=%0d) Status=0x%04h HeaderType=0x%02h",
+                     dut_command, dut_cmd_io, dut_cmd_mem, dut_cmd_bme, dut_status, dut_header_type);
+            $display("[DUT] BAR0=0x%08h BAR1=0x%08h Subsys=0x%04h:0x%04h CapPtr=0x%02h Int=%0d/%0d",
+                     dut_bar0, dut_bar1, dut_subsys_ven, dut_subsys_id,
+                     dut_cap_ptr, dut_int_line, dut_int_pin);
+        end
 
         if (cnt_cfgrd !== get_c_cfgrd()) begin
             $display("[MIS] CfgRd HDL=%0d C=%0d", cnt_cfgrd, get_c_cfgrd());

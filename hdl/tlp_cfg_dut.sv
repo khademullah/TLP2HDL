@@ -3,9 +3,8 @@
 // Copyright (c) 2026 Khadem Ullah
 //
 // Teaching PCIe endpoint DUT (config-space slave) — not a NIC/PHY.
-// On CfgWr to dut_bdf: update 256-byte cfg image.
-// On PAIR CfgRd to dut_bdf: emit teaching-AXIS Cpl (4 beats).
-// On COMPLETE CfgRd: seed cfg image from capture payload.
+// Decodes Type-0 header fields (Vendor/Device ID, Command, BARs, …).
+// On PAIR CfgRd: emit teaching-AXIS Cpl. On COMPLETE CfgRd: seed image.
 
 module tlp_cfg_dut (
     input  wire        clk,
@@ -31,6 +30,27 @@ module tlp_cfg_dut (
     output reg         m_tlast,
     output wire        m_busy,
 
+    // Live Type-0 header decode (from cfg image)
+    output wire [15:0] vendor_id,
+    output wire [15:0] device_id,
+    output wire [15:0] command,
+    output wire [15:0] status,
+    output wire [7:0]  revision_id,
+    output wire [7:0]  prog_if,
+    output wire [7:0]  subclass,
+    output wire [7:0]  class_code,
+    output wire [7:0]  header_type,
+    output wire [31:0] bar0,
+    output wire [31:0] bar1,
+    output wire [15:0] subsystem_vendor_id,
+    output wire [15:0] subsystem_id,
+    output wire [7:0]  capabilities_ptr,
+    output wire [7:0]  interrupt_line,
+    output wire [7:0]  interrupt_pin,
+    output wire        cmd_io_space,
+    output wire        cmd_mem_space,
+    output wire        cmd_bus_master,
+
     output reg  [31:0] cnt_hit_rd,
     output reg  [31:0] cnt_hit_wr,
     output reg  [31:0] cnt_cpl_tx,
@@ -51,13 +71,33 @@ module tlp_cfg_dut (
     wire        hit    = enable && hdr_valid && (hdr_completer == dut_bdf);
     wire [31:0] dw_idx = {26'd0, hdr_addr[7:2]};
 
+    assign vendor_id            = cfg[0][15:0];
+    assign device_id            = cfg[0][31:16];
+    assign command              = cfg[1][15:0];
+    assign status               = cfg[1][31:16];
+    assign revision_id          = cfg[2][7:0];
+    assign prog_if              = cfg[2][15:8];
+    assign subclass             = cfg[2][23:16];
+    assign class_code           = cfg[2][31:24];
+    assign header_type          = cfg[3][23:16];
+    assign bar0                 = cfg[4];
+    assign bar1                 = cfg[5];
+    assign subsystem_vendor_id  = cfg[11][15:0];
+    assign subsystem_id         = cfg[11][31:16];
+    assign capabilities_ptr     = cfg[13][7:0];
+    assign interrupt_line       = cfg[15][7:0];
+    assign interrupt_pin        = cfg[15][15:8];
+    assign cmd_io_space         = command[0];
+    assign cmd_mem_space        = command[1];
+    assign cmd_bus_master       = command[2];
+
     reg        pend_valid;
     reg [7:0]  pend_tag;
     reg [15:0] pend_req;
     reg [31:0] pend_data;
     reg [31:0] pend_addr;
 
-    reg [2:0]  emit_state; // 0 idle, 1-4 = beats left to issue (4..1)
+    reg [2:0]  emit_state;
 
     assign m_busy = pend_valid || (emit_state != 3'd0) || m_tvalid;
 
@@ -86,8 +126,9 @@ module tlp_cfg_dut (
                 cfg[i] <= 32'd0;
             cfg[0]      <= {DEF_DEVICE, DEF_VENDOR};
             cfg[1]      <= 32'h0010_0000;
-            cfg[2]      <= 32'h0200_0000;
-            cfg[11]     <= 32'h0000_0040;
+            cfg[2]      <= 32'h0200_0000; // Network controller class
+            cfg[3]      <= 32'h0000_0000;
+            cfg[13]     <= 32'h0000_0040; // Cap ptr @ 0x34 dword index 13 = 0x34
             cnt_hit_rd  <= 32'd0;
             cnt_hit_wr  <= 32'd0;
             cnt_cpl_tx  <= 32'd0;
@@ -133,7 +174,6 @@ module tlp_cfg_dut (
                 pend_data  <= (dw_idx < CFG_DWORDS) ? cfg[dw_idx] : 32'd0;
             end
 
-            // Complete current beat handshake
             if (m_tvalid && m_tready) begin
                 m_tvalid <= 1'b0;
                 m_tstart <= 1'b0;
@@ -146,7 +186,6 @@ module tlp_cfg_dut (
                 end
             end
 
-            // Launch or continue beats when bus free
             if (!m_tvalid) begin
                 if (emit_state == 3'd0 && pend_valid) begin
                     pend_valid <= 1'b0;
