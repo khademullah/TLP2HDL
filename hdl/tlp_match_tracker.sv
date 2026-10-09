@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (c) 2026 Khadem Ullah
 // Match tracker (pcieshark semantics):
-//   COMPLETE → cnt_complete
+//   COMPLETE → cnt_complete  (posted Wr, or Rd with payload)
 //   PAIR     → open slot (CfgRd/MemRd without payload)
 //   Cpl      → close by tag (requester/completer either side for CSV wire IDs)
 
@@ -10,6 +10,8 @@ module tlp_match_tracker (
     input  wire        clk,
     input  wire        rst_n,
     input  wire        hdr_valid,
+    input  wire        hdr_is_memrd,
+    input  wire        hdr_is_memwr,
     input  wire        hdr_is_cfgrd,
     input  wire        hdr_is_cfgwr,
     input  wire        hdr_is_cpl,
@@ -19,6 +21,8 @@ module tlp_match_tracker (
     input  wire [15:0] hdr_requester,
     input  wire [15:0] hdr_completer,
 
+    output reg  [31:0] cnt_memrd,
+    output reg  [31:0] cnt_memwr,
     output reg  [31:0] cnt_cfgrd,
     output reg  [31:0] cnt_cfgwr,
     output reg  [31:0] cnt_cpl,
@@ -38,6 +42,8 @@ module tlp_match_tracker (
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
+            cnt_memrd     <= 32'd0;
+            cnt_memwr     <= 32'd0;
             cnt_cfgrd     <= 32'd0;
             cnt_cfgwr     <= 32'd0;
             cnt_cpl       <= 32'd0;
@@ -51,6 +57,10 @@ module tlp_match_tracker (
                 slot_req[i]   <= 16'd0;
             end
         end else if (hdr_valid) begin
+            if (hdr_is_memrd)
+                cnt_memrd <= cnt_memrd + 1'b1;
+            if (hdr_is_memwr)
+                cnt_memwr <= cnt_memwr + 1'b1;
             if (hdr_is_cfgrd)
                 cnt_cfgrd <= cnt_cfgrd + 1'b1;
             if (hdr_is_cfgwr)

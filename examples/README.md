@@ -16,7 +16,9 @@ Reference logs:
 
 `MAX_TLPS` truncates the loaded set **before** C and HDL tallies, so short and full gates agree.
 
-Match (pcieshark): request **with** payload → `complete`; request **without** → `pair` (open); `Cpl` closes by tag.
+Match (pcieshark): posted Wr → `complete`; request **with** payload → `complete`; empty Rd → `pair` (open); `Cpl` closes by tag.
+
+**Richer Gen3/4/5 TLP coverage (MemRd/Wr)** from real traces — see [§04](#04--richer-gen345-tlp-coverage-from-real-traces-memrdwr). Types: `MemRd` `MemWr` `CfgRd` `CfgWr` `Cpl`.
 
 ---
 
@@ -76,17 +78,49 @@ Expected: `matched=192` `unmatched=0` ([`gate_csv_sample.txt`](gate_csv_sample.t
 
 ---
 
-## 04 — MemRd↔Cpl stress
+## 04 — Richer Gen3/4/5 TLP coverage from real traces (MemRd/Wr)
 
-Out-of-order completions + mixed CfgRd pair / complete.
+Teaching-AXIS Mem + cfg TLPs from built-in samples **and** live QEMU / pcieshark captures.
+
+Supported types: `MemRd` `MemWr` `CfgRd` `CfgWr` `Cpl`.
+
+### Built-in samples
 
 ```bash
 cd /home/khadem/TLP2HDL
-make stress
-grep -E '\[GATE\]|\[SUM\]' simulation.log
+make stress      # MemRd↔Cpl OOO + posted MemWr · matched=7 mis=0
+make mem-gate    # fabric MemRd/MemWr/Cpl · matched=5 mis=0
+make mem-mmio    # QEMU memory_region_ops_* one-liners · complete=6 mis=0
 ```
 
-Expected: `matched=6` `pair=6` `mis=0`.
+### Live capture via pcieshark scripts
+
+```bash
+cd /home/khadem/pcieshark
+# cfg + MMIO Mem (filters UART/GIC; keeps pcie/nvme/e1000 names)
+CAPTURE_MEM=1 RUN_TIMEOUT_SECONDS=10 bash scripts/run_to_tlp2hdl.sh
+
+# Export-only from an existing log:
+python3 scripts/export_trace_csv.py out/fabric_trace.log -o out/fabric_cfg.csv \
+  --types CfgRd,CfgWr,Cpl
+python3 scripts/export_trace_csv.py out/fabric_trace.log -o out/fabric_mem.csv \
+  --types MemRd,MemWr --name-filter pcie,nvme,e1000 --exclude-name pl011,gicv3
+
+cd /home/khadem/TLP2HDL
+make gate TRACE=/home/khadem/pcieshark/out/fabric_cfg.csv MAX_TLPS=2000
+make gate TRACE=/home/khadem/pcieshark/out/fabric_mem.csv MAX_TLPS=2000
+make TRACE=/home/khadem/pcieshark/out/fabric_mem.csv TYPE=MemRd,MemWr MAX_TLPS=2000 gate
+```
+
+Zephyr / Linux runners:
+
+```bash
+cd /home/khadem/pcieshark
+CAPTURE_MEM=0 bash scripts/run_zephyr_ai_topology.sh          # pci_cfg_* only
+CAPTURE_MEM=1 RUN_TIMEOUT_SECONDS=15 bash scripts/run_zephyr_ai_topology.sh
+CAPTURE_MEM=1 QEMU_TRACE='pci_cfg_*,memory_region_ops_read' \
+  bash scripts/run_linux_ai_topology.sh
+```
 
 ---
 
@@ -96,6 +130,7 @@ Expected: `matched=6` `pair=6` `mis=0`.
 cd /home/khadem/TLP2HDL
 make TRACE=traces/golden_cfg_sample.log TYPE=CfgRd MAX_TLPS=64 gate
 make TRACE=/home/khadem/pcieshark/pcie_trace.csv TYPE=CfgRd,Cpl DIR=TX MAX_TLPS=4000
+make TRACE=/home/khadem/pcieshark/out/fabric_mem.csv TYPE=MemRd,MemWr MAX_TLPS=2000 gate
 ```
 
 ---
@@ -179,5 +214,20 @@ make wave
 
 ```bash
 cd /home/khadem/TLP2HDL
-make clean && make gate && make stress && make csv-gate
+make clean && make gate && make stress && make mem-gate && make mem-mmio && make csv-gate
 ```
+
+## Supported make / plusarg cheat sheet
+
+| Command | What it covers |
+|---------|----------------|
+| `make gate` | Default cfg sample |
+| `make stress` | MemRd↔Cpl + MemWr |
+| `make mem-gate` | Fabric Mem sample |
+| `make mem-mmio` | QEMU MMIO Mem log |
+| `make csv-gate` | Real `pcie_trace.csv` cfg Match |
+| `make dut` / `make dut-multi` | Cfg endpoint DUT |
+| `TRACE=… TYPE=MemRd,MemWr` | Type filter |
+| `TRACE=… DIR=TX` | Direction filter |
+| `DUT_BDF=` / `DUT_BDFS=` | Single / multi EP |
+| `DUMP=out.csv` | Replay dump |

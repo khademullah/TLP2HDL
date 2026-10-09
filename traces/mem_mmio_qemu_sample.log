@@ -1,0 +1,6 @@
+memory_region_ops_write cpu 0 mr 0x1 addr 0xe0000000 value 0x33221100 size 4 name 'e1000e-mmio'
+memory_region_ops_write cpu 0 mr 0x1 addr 0xe0000004 value 0x77665544 size 4 name 'e1000e-mmio'
+memory_region_ops_read cpu 0 mr 0x1 addr 0xe0000000 value 0x33221100 size 4 name 'e1000e-mmio'
+memory_region_ops_read cpu 0 mr 0x1 addr 0xe0000004 value 0x77665544 size 4 name 'e1000e-mmio'
+memory_region_ops_write cpu 0 mr 0x2 addr 0xe1000010 value 0xa5a5a5a5 size 4 name 'nvme-bar'
+memory_region_ops_read cpu 0 mr 0x2 addr 0xe1000010 value 0xa5a5a5a5 size 4 name 'nvme-bar'

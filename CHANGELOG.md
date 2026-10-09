@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.2 — 2026-10-09
+
+- **MemRd / MemWr coverage**: HDL tallies + gate (`cnt_memrd`/`cnt_memwr`), correct TB logs
+- Posted writes (CfgWr/MemWr) always `complete` — no false PAIR slots
+- QEMU `memory_region_ops_{read,write}` → MemRd/MemWr COMPLETE in DPI
+- Traces: enriched `memrd_cpl_stress.csv`, `mem_fabric_sample.csv`, `mem_mmio_qemu_sample.log`
+- Make targets: `make mem-gate`, `make mem-mmio`
+- Docs: “Richer Gen3/4/5 TLP coverage from real traces (MemRd/Wr)” + live capture commands (README, examples §04, site/run book)
+
 ## 0.2.1 — 2026-10-09
 
 - Teaching PCIe **endpoint DUT** (`tlp_cfg_dut.sv`): 256-byte cfg space, BAR sizing, Cpl on PAIR CfgRd

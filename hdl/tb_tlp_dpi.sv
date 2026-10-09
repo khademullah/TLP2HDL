@@ -22,6 +22,8 @@ module tb_tlp_dpi;
     import "DPI-C" function int get_tlp_count();
     import "DPI-C" function int get_c_cfgrd();
     import "DPI-C" function int get_c_cfgwr();
+    import "DPI-C" function int get_c_memrd();
+    import "DPI-C" function int get_c_memwr();
     import "DPI-C" function int get_c_complete();
     import "DPI-C" function int get_c_cpl();
     import "DPI-C" function int get_c_paired();
@@ -44,12 +46,16 @@ module tb_tlp_dpi;
     wire [15:0] hdr_completer;
     wire [31:0] hdr_addr;
     wire [31:0] hdr_payload;
+    wire        hdr_is_memrd;
+    wire        hdr_is_memwr;
     wire        hdr_is_cfgrd;
     wire        hdr_is_cfgwr;
     wire        hdr_is_cpl;
     wire        hdr_is_complete;
     wire        hdr_is_pair;
 
+    wire [31:0] cnt_memrd;
+    wire [31:0] cnt_memwr;
     wire [31:0] cnt_cfgrd;
     wire [31:0] cnt_cfgwr;
     wire [31:0] cnt_cpl;
@@ -131,6 +137,8 @@ module tb_tlp_dpi;
         .hdr_completer(hdr_completer),
         .hdr_addr(hdr_addr),
         .hdr_payload(hdr_payload),
+        .hdr_is_memrd(hdr_is_memrd),
+        .hdr_is_memwr(hdr_is_memwr),
         .hdr_is_cfgrd(hdr_is_cfgrd),
         .hdr_is_cfgwr(hdr_is_cfgwr),
         .hdr_is_cpl(hdr_is_cpl),
@@ -142,6 +150,8 @@ module tb_tlp_dpi;
         .clk(clk),
         .rst_n(rst_n),
         .hdr_valid(hdr_valid),
+        .hdr_is_memrd(hdr_is_memrd),
+        .hdr_is_memwr(hdr_is_memwr),
         .hdr_is_cfgrd(hdr_is_cfgrd),
         .hdr_is_cfgwr(hdr_is_cfgwr),
         .hdr_is_cpl(hdr_is_cpl),
@@ -150,6 +160,8 @@ module tb_tlp_dpi;
         .hdr_tag(hdr_tag),
         .hdr_requester(hdr_requester),
         .hdr_completer(hdr_completer),
+        .cnt_memrd(cnt_memrd),
+        .cnt_memwr(cnt_memwr),
         .cnt_cfgrd(cnt_cfgrd),
         .cnt_cfgwr(cnt_cfgwr),
         .cnt_cpl(cnt_cpl),
@@ -285,13 +297,18 @@ module tb_tlp_dpi;
             else if (hdr_is_cfgwr)
                 $display("[TLP] #%0d CfgWr  cpl=%04h addr=0x%0h data=0x%08h complete=%0d",
                          tlp_seen, hdr_completer, hdr_addr, hdr_payload, hdr_is_complete);
+            else if (hdr_is_memrd)
+                $display("[TLP] #%0d MemRd  req=%04h cpl=%04h tag=%0d addr=0x%0h data=0x%08h complete=%0d pair=%0d",
+                         tlp_seen, hdr_requester, hdr_completer, hdr_tag, hdr_addr, hdr_payload,
+                         hdr_is_complete, hdr_is_pair);
+            else if (hdr_is_memwr)
+                $display("[TLP] #%0d MemWr  req=%04h cpl=%04h tag=%0d addr=0x%0h data=0x%08h complete=%0d",
+                         tlp_seen, hdr_requester, hdr_completer, hdr_tag, hdr_addr, hdr_payload,
+                         hdr_is_complete);
             else if (hdr_is_cpl)
                 $display("[TLP] #%0d Cpl    req=%04h cpl=%04h tag=%0d data=0x%08h%s",
                          tlp_seen, hdr_requester, hdr_completer, hdr_tag, hdr_payload,
                          dut_enable ? "  (DUT)" : "");
-            else if (hdr_is_pair)
-                $display("[TLP] #%0d MemRd  req=%04h tag=%0d addr=0x%0h pair=1",
-                         tlp_seen, hdr_requester, hdr_tag, hdr_addr);
             else
                 $display("[TLP] #%0d type=0x%02h addr=0x%0h",
                          tlp_seen, hdr_type, hdr_addr);
@@ -457,10 +474,10 @@ module tb_tlp_dpi;
         repeat (8) @(posedge clk);
 
         $display("[SUM] beats=%0d tlps_seen=%0d", beat_count, tlp_seen);
-        $display("[SUM] HDL  CfgRd=%0d CfgWr=%0d Cpl=%0d complete=%0d open=%0d matched=%0d unmatched=%0d",
-                 cnt_cfgrd, cnt_cfgwr, cnt_cpl, cnt_complete, cnt_open, cnt_matched, cnt_unmatched);
-        $display("[SUM] C    CfgRd=%0d CfgWr=%0d Cpl=%0d complete=%0d pair=%0d",
-                 get_c_cfgrd(), get_c_cfgwr(), get_c_cpl(), get_c_complete(), get_c_paired());
+        $display("[SUM] HDL  MemRd=%0d MemWr=%0d CfgRd=%0d CfgWr=%0d Cpl=%0d complete=%0d open=%0d matched=%0d unmatched=%0d",
+                 cnt_memrd, cnt_memwr, cnt_cfgrd, cnt_cfgwr, cnt_cpl, cnt_complete, cnt_open, cnt_matched, cnt_unmatched);
+        $display("[SUM] C    MemRd=%0d MemWr=%0d CfgRd=%0d CfgWr=%0d Cpl=%0d complete=%0d pair=%0d",
+                 get_c_memrd(), get_c_memwr(), get_c_cfgrd(), get_c_cfgwr(), get_c_cpl(), get_c_complete(), get_c_paired());
         if (dut_enable) begin
             $display("[DUT] bdfs=%s eps=%0d hit_rd=%0d hit_wr=%0d cpl_tx=%0d seed=%0d",
                      dut_label, dut_ep_count, dut_hit_rd, dut_hit_wr, dut_cpl_tx, dut_seed);
@@ -484,6 +501,14 @@ module tb_tlp_dpi;
             end
         end
 
+        if (cnt_memrd !== get_c_memrd()) begin
+            $display("[MIS] MemRd HDL=%0d C=%0d", cnt_memrd, get_c_memrd());
+            mis = mis + 1;
+        end
+        if (cnt_memwr !== get_c_memwr()) begin
+            $display("[MIS] MemWr HDL=%0d C=%0d", cnt_memwr, get_c_memwr());
+            mis = mis + 1;
+        end
         if (cnt_cfgrd !== get_c_cfgrd()) begin
             $display("[MIS] CfgRd HDL=%0d C=%0d", cnt_cfgrd, get_c_cfgrd());
             mis = mis + 1;

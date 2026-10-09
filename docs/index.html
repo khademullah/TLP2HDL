@@ -369,9 +369,9 @@
     <header class="hero">
       <img class="hero-mark" src="assets/logo.png" alt="TLP2HDL logo">
       <div>
-        <p class="eyebrow">Release 0.2.1 · AGPL-3.0-only · Verilator 5.032+</p>
+        <p class="eyebrow">Release 0.2.2 · AGPL-3.0-only · Verilator 5.032+</p>
         <h1>TLP2HDL</h1>
-        <p class="tag">PCIe Transaction Layer Packets to cycle-accurate HDL. Replay pcieshark and QEMU traces into Verilator, watch teaching AXIS beats on a wave, gate Match in C and SystemVerilog, and optionally drive a teaching config-space endpoint DUT.</p>
+        <p class="tag">PCIe Transaction Layer Packets to cycle-accurate HDL. Replay pcieshark and QEMU cfg/Mem traces into Verilator, watch teaching AXIS beats on a wave, gate Match in C and SystemVerilog, and optionally drive a teaching config-space endpoint DUT. Richer Gen3/4/5 TLP coverage (MemRd/Wr) from real traces.</p>
         <div class="actions">
           <a class="btn btn-cyan" href="https://github.com/khademullah/TLP2HDL">View on GitHub</a>
           <a class="btn btn-gold" href="run.html">Run book</a>
@@ -404,7 +404,11 @@
       <div class="grid">
         <article>
           <h3>Trace ingest</h3>
-          <p>QEMU <code>pci_cfg_read/write</code> logs and pcieshark CSV. One file, no rebuild when you change <code>TRACE=</code>.</p>
+          <p>QEMU <code>pci_cfg_*</code> / <code>memory_region_ops_*</code> logs and pcieshark CSV. One file, no rebuild when you change <code>TRACE=</code>.</p>
+        </article>
+        <article>
+          <h3>Gen3/4/5 MemRd/Wr</h3>
+          <p>Richer TLP coverage from real traces: MemRd/MemWr/CfgRd/CfgWr/Cpl. <code>make stress</code> · <code>mem-gate</code> · <code>mem-mmio</code> · <code>CAPTURE_MEM=1</code>.</p>
         </article>
         <article>
           <h3>Teaching AXIS-TLP</h3>
@@ -412,11 +416,11 @@
         </article>
         <article>
           <h3>Header parse</h3>
-          <p><code>tlp_header_parser</code> recovers CfgRd/CfgWr/Cpl fields and the QEMU one-line complete hint.</p>
+          <p><code>tlp_header_parser</code> recovers Cfg/Mem/Cpl fields and the QEMU one-line complete hint.</p>
         </article>
         <article>
           <h3>Match tracker</h3>
-          <p>Same idea as pcieshark Match: one-line cfg → <code>complete</code>; optional MemRd↔Cpl pairing slots.</p>
+          <p>Same idea as pcieshark Match: posted Wr → <code>complete</code>; empty Rd → <code>pair</code>; Cpl closes by tag.</p>
         </article>
         <article>
           <h3>C vs HDL gate</h3>
@@ -595,7 +599,7 @@ make TRACE=/path/to/pcie_trace.csv DUT_BDFS=0100,0200 MAX_TLPS=4000</pre>
     </section>
 
     <footer>
-      <span><a href="https://github.com/khademullah/TLP2HDL/blob/main/LICENSE">AGPL-3.0-only</a> · <a href="https://github.com/khademullah/TLP2HDL">khademullah/TLP2HDL</a> · 0.2.1</span>
+      <span><a href="https://github.com/khademullah/TLP2HDL/blob/main/LICENSE">AGPL-3.0-only</a> · <a href="https://github.com/khademullah/TLP2HDL">khademullah/TLP2HDL</a> · 0.2.2</span>
       <span>Teaching AXIS bus — not a full PCIe PHY or VIP.</span>
     </footer>
   </div>

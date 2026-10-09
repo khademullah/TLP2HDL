@@ -46,7 +46,7 @@ else ifneq ($(strip $(DUT_BDF)),)
 PLUSARGS += +DUT_BDF=$(DUT_BDF)
 endif
 
-.PHONY: all compile run wave clean gate stress dump-roundtrip csv-gate dut dut-multi
+.PHONY: all compile run wave clean gate stress mem-gate mem-mmio dump-roundtrip csv-gate dut dut-multi
 
 all: run
 
@@ -68,6 +68,14 @@ gate: run
 
 stress:
 	$(MAKE) gate TRACE=traces/memrd_cpl_stress.csv MAX_TLPS=64
+
+# MemRd↔Cpl out-of-order + posted MemWr fabric slice
+mem-gate:
+	$(MAKE) gate TRACE=traces/mem_fabric_sample.csv MAX_TLPS=64
+
+# QEMU memory_region_ops_* → MemRd/MemWr (complete one-liners)
+mem-mmio:
+	$(MAKE) gate TRACE=traces/mem_mmio_qemu_sample.log MAX_TLPS=64
 
 csv-gate:
 	$(MAKE) gate TRACE=/home/khadem/pcieshark/pcie_trace.csv MAX_TLPS=4000

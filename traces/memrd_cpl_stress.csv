@@ -13,3 +13,8 @@ timestamp_ns,direction,type,requester_id,completer_id,tag,length,addr,payload
 11,RX,Cpl,02:00.0,00:00.0,11,4,0x0,36 1b 00 00
 12,TX,CfgWr,00:00.0,02:00.0,0,4,0x4,ff ff ff ff
 13,RX,CfgRd,gpex-root,00:00.0,0,4,0x0,36 1b 08 00
+14,TX,MemWr,00:00.0,01:00.0,0,4,0xe0000100,de ad be ef
+15,TX,MemWr,00:00.0,01:00.0,0,4,0xe0000104,01 02 03 04
+16,TX,MemRd,00:00.0,01:00.0,20,4,0xe0000100,
+17,RX,Cpl,01:00.0,00:00.0,20,4,0xe0000100,de ad be ef
+18,TX,MemWr,00:00.0,02:00.0,0,4,0xe1000000,55 55 55 55

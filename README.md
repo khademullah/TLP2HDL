@@ -32,9 +32,53 @@
 
 <p align="center"><em><code>make dut-multi</code> — EPs <code>0100</code>/<code>0200</code>, DeviceID <code>0x000c</code>/<code>0x000d</code>, <code>mis=0</code></em></p>
 
-Replay QEMU `pci_cfg_*` logs or pcieshark CSV traces into a teaching AXI-Stream of TLP beats. A SystemVerilog header parser and Match tracker run beside the stream. The C DPI tally must agree (`mis=0`).
+Replay QEMU `pci_cfg_*` / `memory_region_ops_*` logs or pcieshark CSV traces into a teaching AXI-Stream of TLP beats. A SystemVerilog header parser and Match tracker run beside the stream. The C DPI tally must agree (`mis=0`).
 
 Waveform pedagogy matches [L2AxisBr](https://khademullah.github.io/L2AxisBr/run.html): one clock is one column; a beat counts only when `tvalid && tready`; a TLP is `tstart` through `tlast`.
+
+## Richer Gen3/4/5 TLP coverage from real traces (MemRd/Wr)
+
+Teaching-AXIS coverage of **MemRd / MemWr / CfgRd / CfgWr / Cpl** from real pcieshark / QEMU captures — not a PCIe 6/7 VIP, but enough to gate memory and config TLPs the way you gate cfg today.
+
+| Source | What you get |
+|--------|----------------|
+| Built-in samples | `make stress` · `make mem-gate` · `make mem-mmio` |
+| Live QEMU + pcieshark | `CAPTURE_MEM=1` → CSV → `make gate TRACE=…` |
+| Filters | `TYPE=MemRd,MemWr` · `--name-filter pcie,nvme,e1000` |
+
+```bash
+# --- TLP2HDL built-in Mem coverage ---
+cd /home/khadem/TLP2HDL
+make stress      # MemRd↔Cpl out-of-order + posted MemWr · mis=0
+make mem-gate    # fabric MemRd/MemWr/Cpl sample · mis=0
+make mem-mmio    # QEMU memory_region_ops_* one-liners · mis=0
+
+# --- Capture real Gen3/4/5-style Mem + cfg from pcieshark ---
+cd /home/khadem/pcieshark
+CAPTURE_MEM=1 RUN_TIMEOUT_SECONDS=10 bash scripts/run_to_tlp2hdl.sh
+
+# Or export an existing log, then gate:
+python3 scripts/export_trace_csv.py out/fabric_trace.log -o out/fabric_mem.csv \
+  --types MemRd,MemWr --name-filter pcie,nvme,e1000 --exclude-name pl011,gicv3
+python3 scripts/export_trace_csv.py out/fabric_trace.log -o out/fabric_cfg.csv \
+  --types CfgRd,CfgWr,Cpl
+
+cd /home/khadem/TLP2HDL
+make gate TRACE=/home/khadem/pcieshark/out/fabric_mem.csv MAX_TLPS=2000
+make gate TRACE=/home/khadem/pcieshark/out/fabric_cfg.csv MAX_TLPS=2000
+make TRACE=/home/khadem/pcieshark/out/fabric_mem.csv TYPE=MemRd,MemWr MAX_TLPS=2000 gate
+```
+
+Zephyr / Linux runners (cfg only vs cfg+Mem):
+
+```bash
+cd /home/khadem/pcieshark
+CAPTURE_MEM=0 bash scripts/run_zephyr_ai_topology.sh
+CAPTURE_MEM=1 RUN_TIMEOUT_SECONDS=15 bash scripts/run_zephyr_ai_topology.sh
+CAPTURE_MEM=1 bash scripts/run_linux_ai_topology.sh
+```
+
+Full recipes: [`examples/README.md`](examples/README.md) §04.
 
 ## Quick start
 
@@ -43,6 +87,7 @@ sudo apt install build-essential verilator gtkwave   # Verilator 5.032+
 cd /home/khadem/TLP2HDL
 make gate
 make wave    # opens simulation_trace.vcd
+make stress && make mem-gate && make mem-mmio
 ```
 
 ```bash
@@ -82,10 +127,14 @@ Match hints (pcieshark):
 
 | Format | Example |
 |--------|---------|
-| QEMU log | `pci_cfg_read nvme 03:00.0 @0x0 -> 0x101b36` |
+| QEMU cfg log | `pci_cfg_read nvme 03:00.0 @0x0 -> 0x101b36` |
+| QEMU MMIO log | `memory_region_ops_read … name 'pcie-mmcfg-mmio'` → MemRd |
 | CSV | `timestamp,direction,type,requester,completer,tag,length,addr,payload` |
 
-Default sample: `traces/golden_cfg_sample.log`. Stress: `traces/memrd_cpl_stress.csv`.
+Supported TLP types: **MemRd, MemWr, CfgRd, CfgWr, Cpl**.  
+Match: posted Wr → `complete`; empty Rd → `pair` until `Cpl`; one-line QEMU Rd/Wr with data → `complete`.
+
+Default sample: `traces/golden_cfg_sample.log`. Mem samples: `memrd_cpl_stress.csv`, `mem_fabric_sample.csv`, `mem_mmio_qemu_sample.log`.
 
 ## Make targets
 
@@ -93,7 +142,9 @@ Default sample: `traces/golden_cfg_sample.log`. Stress: `traces/memrd_cpl_stress
 |--------|---------|
 | `make` / `make run` | Compile + simulate |
 | `make gate` | Fail unless `mis=0` |
-| `make stress` | MemRd↔Cpl out-of-order stress |
+| `make stress` | MemRd↔Cpl + MemWr stress |
+| `make mem-gate` | Fabric MemRd/MemWr/Cpl sample |
+| `make mem-mmio` | QEMU `memory_region_ops_*` → Mem |
 | `make csv-gate` | Full pcieshark `pcie_trace.csv` |
 | `make dut` | Teaching endpoint DUT (cfg + Cpl) |
 | `make dut-multi` | Two-BDF fabric demo (`0100,0200`) |
@@ -101,7 +152,7 @@ Default sample: `traces/golden_cfg_sample.log`. Stress: `traces/memrd_cpl_stress
 | `make wave` | GTKWave on `simulation_trace.vcd` |
 | `make clean` | Remove `obj_dir` and VCD |
 
-Plusargs / make vars: `TRACE=` `MAX_TLPS=` `TYPE=CfgRd,Cpl` `DIR=TX` `DUMP=out.csv` `DUT_BDF=0300` `DUT_BDFS=0100,0200`.
+Plusargs / make vars: `TRACE=` `MAX_TLPS=` `TYPE=CfgRd,Cpl,MemRd,MemWr` `DIR=TX` `DUMP=out.csv` `DUT_BDF=0300` `DUT_BDFS=0100,0200`.
 
 ### Endpoint DUT
 

@@ -6,11 +6,13 @@
  *
  * Accepts:
  *   - QEMU pci_cfg_* logs (one-line CfgRd/CfgWr with returned DWORD)
+ *   - QEMU memory_region_ops_{read,write} → MemRd/MemWr COMPLETE one-liners
  *   - CSV: timestamp,direction,type,requester,completer,tag,length,addr,payload
  *
  * Match hints (mirror pcieshark):
+ *   - Posted Wr (CfgWr/MemWr) → COMPLETE (never opens a slot)
  *   - Request with payload → COMPLETE (QEMU one-line / RX cfg with data)
- *   - Request without payload → PAIR (open until Cpl)
+ *   - Empty CfgRd/MemRd → PAIR (open until Cpl)
  *   - Cpl → NONE (closes by tag)
  *
  * Emits a teaching AXI-Stream of 32-bit TLP beats (not full PCIe PHY).
@@ -221,45 +223,107 @@ static int push_tlp(tlp_rec_t *t)
 
 static void assign_request_hint(tlp_rec_t *t, const char *payload)
 {
+    /* Posted writes never open a Match slot (pcieshark semantics). */
+    if (t->type == TLP_MEM_WR || t->type == TLP_CFG_WR) {
+        t->match_hint = MATCH_COMPLETE;
+        return;
+    }
     if (payload_nonempty(payload))
         t->match_hint = MATCH_COMPLETE;
     else
         t->match_hint = MATCH_PAIR;
 }
 
+/* Strip optional "1234.5: " QEMU timestamp prefix. */
+static char *skip_qemu_ts(char *p)
+{
+    char *colon;
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (!isdigit((unsigned char)*p))
+        return p;
+    colon = strchr(p, ':');
+    if (!colon)
+        return p;
+    /* "ts: event ..." — only strip if first token looks numeric */
+    {
+        char *q = p;
+        int dots = 0;
+        while (*q && (isdigit((unsigned char)*q) || *q == '.')) {
+            if (*q == '.') dots++;
+            q++;
+        }
+        if (q == colon && dots <= 1) {
+            p = colon + 1;
+            while (*p && isspace((unsigned char)*p)) p++;
+        }
+    }
+    return p;
+}
+
 static int load_qemu_log(FILE *fp)
 {
-    char line[512];
+    char line[768];
     int n = 0;
     while (fgets(line, sizeof(line), fp)) {
-        char *p = line;
-        while (*p && isspace((unsigned char)*p)) p++;
-        if (strncmp(p, "pci_cfg_", 8) != 0)
-            continue;
-
-        int is_write = (strncmp(p, "pci_cfg_write", 13) == 0);
-        char dev[64] = {0};
-        char bdf[32] = {0};
-        unsigned long offset = 0;
-        unsigned long value = 0;
-        char arrow[4] = {0};
-
-        if (sscanf(p, "pci_cfg_%*s %63s %31s @%lx %3s %lx",
-                   dev, bdf, &offset, arrow, &value) < 5)
-            continue;
-
+        char *p = skip_qemu_ts(line);
         tlp_rec_t t;
         memset(&t, 0, sizeof(t));
-        t.type = is_write ? TLP_CFG_WR : TLP_CFG_RD;
-        t.dir = is_write ? DIR_TX : DIR_RX;
-        t.tag = 0;
-        t.match_hint = MATCH_COMPLETE;
-        t.requester = 0;
-        t.completer = parse_bdf(bdf);
-        t.length = 4;
-        t.addr = offset;
-        t.payload = (uint32_t)value;
-        (void)dev;
+
+        if (strncmp(p, "pci_cfg_", 8) == 0) {
+            int is_write = (strncmp(p, "pci_cfg_write", 13) == 0);
+            char dev[64] = {0};
+            char bdf[32] = {0};
+            unsigned long offset = 0;
+            unsigned long value = 0;
+            char arrow[4] = {0};
+
+            if (sscanf(p, "pci_cfg_%*s %63s %31s @%lx %3s %lx",
+                       dev, bdf, &offset, arrow, &value) < 5)
+                continue;
+
+            t.type = is_write ? TLP_CFG_WR : TLP_CFG_RD;
+            t.dir = is_write ? DIR_TX : DIR_RX;
+            t.tag = 0;
+            t.match_hint = MATCH_COMPLETE;
+            t.requester = 0;
+            t.completer = parse_bdf(bdf);
+            t.length = 4;
+            t.addr = offset;
+            t.payload = (uint32_t)value;
+            (void)dev;
+        } else if (strncmp(p, "memory_region_ops_read", 22) == 0 ||
+                   strncmp(p, "memory_region_ops_write", 23) == 0) {
+            /* cpu N mr PTR addr 0xA value 0xV size S name 'NAME' */
+            int is_write = (strncmp(p, "memory_region_ops_write", 23) == 0);
+            int cpu = 0;
+            unsigned long long addr = 0, value = 0;
+            unsigned size = 4;
+            char name[96] = {0};
+            void *mr = NULL;
+
+            if (sscanf(p,
+                       is_write
+                           ? "memory_region_ops_write cpu %d mr %p addr 0x%llx value 0x%llx size %u name '%95[^']'"
+                           : "memory_region_ops_read cpu %d mr %p addr 0x%llx value 0x%llx size %u name '%95[^']'",
+                       &cpu, &mr, &addr, &value, &size, name) < 6)
+                continue;
+            (void)cpu;
+            (void)mr;
+
+            t.type = is_write ? TLP_MEM_WR : TLP_MEM_RD;
+            t.dir = DIR_TX; /* host CPU initiated */
+            t.tag = 0;
+            t.match_hint = MATCH_COMPLETE; /* one-line MMIO with data */
+            t.requester = 0;
+            t.completer = 0; /* region name not a BDF; keep RID 0 */
+            t.length = size ? (uint16_t)size : 4;
+            t.addr = addr;
+            t.payload = (uint32_t)value;
+            (void)name;
+        } else {
+            continue;
+        }
+
         if (push_tlp(&t) == 0)
             n++;
         else if (tlp_count >= MAX_TLPS)
@@ -541,6 +605,8 @@ unsigned get_beat_data(void)
 int get_tlp_count(void) { return tlp_count; }
 int get_c_cfgrd(void) { return c_cfgrd; }
 int get_c_cfgwr(void) { return c_cfgwr; }
+int get_c_memrd(void) { return c_memrd; }
+int get_c_memwr(void) { return c_memwr; }
 int get_c_complete(void) { return c_complete; }
 int get_c_cpl(void) { return c_cpl; }
 int get_c_paired(void) { return c_paired; }

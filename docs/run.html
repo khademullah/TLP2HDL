@@ -133,15 +133,39 @@ grep -E '\[GATE\]|\[SUM\]' simulation.log</pre>
 [SUM] C    … complete=1209 pair=192
 [GATE] mis=0  PASS</div>
 
-    <h2><span class="num">04</span><br>MemRd↔Cpl stress</h2>
-    <p class="lead">Out-of-order completions + mixed CfgRd pair/complete.</p>
-    <pre>cd /home/khadem/TLP2HDL
-make stress</pre>
+    <h2><span class="num">04</span><br>Richer Gen3/4/5 TLP coverage (MemRd/Wr)</h2>
+    <p class="lead">Teaching-AXIS MemRd/MemWr/Cfg/Cpl from built-in samples and live pcieshark / QEMU traces.</p>
+    <pre># Built-in Mem coverage
+cd /home/khadem/TLP2HDL
+make stress      # MemRd↔Cpl OOO + posted MemWr · mis=0
+make mem-gate    # fabric MemRd/MemWr/Cpl · mis=0
+make mem-mmio    # QEMU memory_region_ops_* · mis=0
+
+# Capture real Gen3/4/5-style Mem + cfg
+cd /home/khadem/pcieshark
+CAPTURE_MEM=1 RUN_TIMEOUT_SECONDS=10 bash scripts/run_to_tlp2hdl.sh
+
+python3 scripts/export_trace_csv.py out/fabric_trace.log -o out/fabric_mem.csv \
+  --types MemRd,MemWr --name-filter pcie,nvme,e1000 --exclude-name pl011,gicv3
+python3 scripts/export_trace_csv.py out/fabric_trace.log -o out/fabric_cfg.csv \
+  --types CfgRd,CfgWr,Cpl
+
+cd /home/khadem/TLP2HDL
+make gate TRACE=/home/khadem/pcieshark/out/fabric_mem.csv MAX_TLPS=2000
+make gate TRACE=/home/khadem/pcieshark/out/fabric_cfg.csv MAX_TLPS=2000
+make TRACE=/home/khadem/pcieshark/out/fabric_mem.csv TYPE=MemRd,MemWr MAX_TLPS=2000 gate
+
+# Zephyr / Linux runners
+cd /home/khadem/pcieshark
+CAPTURE_MEM=0 bash scripts/run_zephyr_ai_topology.sh
+CAPTURE_MEM=1 RUN_TIMEOUT_SECONDS=15 bash scripts/run_zephyr_ai_topology.sh
+CAPTURE_MEM=1 bash scripts/run_linux_ai_topology.sh</pre>
 
     <h2><span class="num">05</span><br>Type / direction filter</h2>
     <pre>cd /home/khadem/TLP2HDL
 make TYPE=CfgRd MAX_TLPS=64 gate
-make TRACE=/home/khadem/pcieshark/pcie_trace.csv TYPE=CfgRd,Cpl DIR=TX MAX_TLPS=4000</pre>
+make TRACE=/home/khadem/pcieshark/pcie_trace.csv TYPE=CfgRd,Cpl DIR=TX MAX_TLPS=4000
+make TRACE=/home/khadem/pcieshark/out/fabric_mem.csv TYPE=MemRd,MemWr MAX_TLPS=2000 gate</pre>
 
     <h2><span class="num">06</span><br>CSV dump round-trip</h2>
     <pre>cd /home/khadem/TLP2HDL

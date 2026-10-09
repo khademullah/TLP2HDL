@@ -25,6 +25,8 @@ module tlp_header_parser (
     output reg  [15:0] hdr_completer,
     output reg  [31:0] hdr_addr,
     output reg  [31:0] hdr_payload,
+    output reg         hdr_is_memrd,
+    output reg         hdr_is_memwr,
     output reg         hdr_is_cfgrd,
     output reg         hdr_is_cfgwr,
     output reg         hdr_is_cpl,
@@ -32,6 +34,8 @@ module tlp_header_parser (
     output reg         hdr_is_pair
 );
 
+    localparam byte TLP_MEM_RD = 8'h00;
+    localparam byte TLP_MEM_WR = 8'h01;
     localparam byte TLP_CFG_RD = 8'h04;
     localparam byte TLP_CFG_WR = 8'h05;
     localparam byte TLP_CPL    = 8'h0A;
@@ -52,6 +56,8 @@ module tlp_header_parser (
             hdr_completer   <= 16'd0;
             hdr_addr        <= 32'd0;
             hdr_payload     <= 32'd0;
+            hdr_is_memrd    <= 1'b0;
+            hdr_is_memwr    <= 1'b0;
             hdr_is_cfgrd    <= 1'b0;
             hdr_is_cfgwr    <= 1'b0;
             hdr_is_cpl      <= 1'b0;
@@ -82,6 +88,8 @@ module tlp_header_parser (
                     end
                     2'd3: begin
                         hdr_payload     <= tdata;
+                        hdr_is_memrd    <= (hdr_type == TLP_MEM_RD);
+                        hdr_is_memwr    <= (hdr_type == TLP_MEM_WR);
                         hdr_is_cfgrd    <= (hdr_type == TLP_CFG_RD);
                         hdr_is_cfgwr    <= (hdr_type == TLP_CFG_WR);
                         hdr_is_cpl      <= (hdr_type == TLP_CPL);
