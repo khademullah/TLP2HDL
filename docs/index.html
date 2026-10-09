@@ -169,6 +169,7 @@
       border-radius: 8px;
       background: #0c1014;
     }
+    video.demo { aspect-ratio: 16 / 9; height: auto; }
     .demo-note { color: var(--muted); font-size: 13px; text-align: center; margin: 0; }
 
     .grid {
@@ -355,6 +356,7 @@
       <div class="nav-links">
         <a href="#path">Path</a>
         <a href="#dut">DUT</a>
+        <a href="#demo-video">Video</a>
         <a href="#demo">Demo</a>
         <a href="#demo-multi">Multi</a>
         <a href="#beats">Beats</a>
@@ -481,6 +483,15 @@
         <span class="gate-badge">DUT · mis=0</span>
         <p>Capture Cpls are dropped for that BDF. Match closes on DUT completions. Use a BDF with TX empty CfgRd to see <code>cpl_tx</code>; all-complete BDF (e.g. <code>0e01</code>) only seeds and writes. <code>DUT_BDFS=</code> instantiates up to 8 endpoints via <code>tlp_cfg_fabric.sv</code>.</p>
       </div>
+    </section>
+
+    <section id="demo-video">
+      <h2>Walkthrough · site demo</h2>
+      <p class="lead">~74&nbsp;s — logo, <code>make dut</code>, then <code>make dut-multi</code>, with narration.</p>
+      <video class="demo" controls preload="metadata" playsinline poster="assets/logo-web.png">
+        <source src="assets/dut-site-demo.mp4" type="video/mp4">
+      </video>
+      <p class="demo-note">Download: <a href="assets/dut-site-demo.mp4">dut-site-demo.mp4</a> · audio: <a href="assets/dut-voiceover.mp3">dut-voiceover.mp3</a></p>
     </section>
 
     <section id="demo">
